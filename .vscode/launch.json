@@ -1,0 +1,31 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "FastAPI Backend",
+        "type": "debugpy",
+        "request": "launch",
+        "module": "uvicorn",
+        "cwd": "${workspaceFolder}/backend",
+        "args": [
+          "app.main:app",
+          "--reload"
+        ]
+      },
+      {
+        "type": "chrome",
+        "request": "launch",
+        "name": "Launch Frontend",
+        "url": "http://localhost:8080",
+        "webRoot": "${workspaceFolder}/frontend/src"
+      }
+    ],
+    "compounds": [
+      {
+        "name": "Full Dev Setup",
+        "configurations": ["FastAPI Backend"],
+        "preLaunchTask": "Start Frontend"
+      }
+    ]
+  }
+  

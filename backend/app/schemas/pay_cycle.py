@@ -1,0 +1,67 @@
+"""
+PayCycle Pydantic schemas.
+"""
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Optional, List
+from pydantic import BaseModel, Field, model_validator
+
+
+class PayCycleBase(BaseModel):
+    """Base pay cycle schema."""
+    start_date: date
+    end_date: date
+    income_amount: Decimal = Field(..., ge=0, decimal_places=2)
+    
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.end_date <= self.start_date:
+            raise ValueError("end_date must be after start_date")
+        return self
+
+
+class PayCycleCreate(PayCycleBase):
+    """Schema for creating a pay cycle."""
+    pass
+
+
+class PayCycleUpdate(BaseModel):
+    """Schema for updating a pay cycle."""
+    income_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
+    end_date: Optional[date] = None
+
+
+class PayCycleResponse(PayCycleBase):
+    """Schema for pay cycle response."""
+    id: str
+    user_id: str
+    status: str
+    rollover_amount: Decimal
+    created_at: datetime
+    closed_at: Optional[datetime]
+    
+    class Config:
+        from_attributes = True
+
+
+class PayCycleSummaryResponse(BaseModel):
+    """Schema for pay cycle summary."""
+    id: str
+    pay_cycle_id: str
+    total_income: Decimal
+    total_expenses: Decimal
+    total_savings: Decimal
+    net_balance: Decimal
+    category_breakdown: dict
+    goal_completion: dict
+    variances: dict
+    rollover_generated: Decimal
+    generated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class PayCycleWithSummary(PayCycleResponse):
+    """Pay cycle with optional summary included."""
+    summary: Optional[PayCycleSummaryResponse] = None
