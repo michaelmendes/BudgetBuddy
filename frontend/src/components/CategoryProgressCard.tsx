@@ -7,6 +7,7 @@ interface CategoryProgressCardProps {
   category: Category;
   goal?: CategoryGoal;
   spent: number;
+  cycleIncome?: number;
   className?: string;
 }
 
@@ -14,9 +15,14 @@ export function CategoryProgressCard({
   category,
   goal,
   spent,
+  cycleIncome = 0,
   className,
 }: CategoryProgressCardProps) {
-  const budget = goal ? parseDecimal(goal.goal_value) : 0;
+  const budget = goal
+    ? goal.goal_type === 'percentage'
+      ? (parseDecimal(goal.goal_value) / 100) * cycleIncome
+      : parseDecimal(goal.goal_value)
+    : 0;
   const rollover = goal ? parseDecimal(goal.rollover_balance) : 0;
   const totalBudget = budget + rollover;
   const percentage = totalBudget > 0 ? calculatePercentage(spent, totalBudget) : 0;

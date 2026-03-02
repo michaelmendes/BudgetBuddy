@@ -11,6 +11,7 @@ from app.models.recurring_transaction import RecurringTransaction
 from app.models.long_term_goal import LongTermGoal
 from app.models.friendship import Friendship
 from app.models.pay_cycle_summary import PayCycleSummary
+from app.models.starting_amount import StartingAmount
 
 __all__ = [
     "Base",
@@ -23,4 +24,5 @@ __all__ = [
     "LongTermGoal",
     "Friendship",
     "PayCycleSummary",
+    "StartingAmount",
 ]

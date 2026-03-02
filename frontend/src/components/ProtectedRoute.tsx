@@ -7,7 +7,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -20,6 +20,14 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  const isSetupRoute = location.pathname.startsWith('/setup');
+  if (user && !user.setup_completed && !isSetupRoute) {
+    return <Navigate to="/setup/categories" replace />;
+  }
+  if (user && user.setup_completed && isSetupRoute) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;

@@ -6,19 +6,31 @@
 // User types
 export interface User {
   id: string;
+  username: string; 
   email: string;
   display_name: string;
   default_currency: string;
   timezone: string;
+  setup_completed: boolean;
   created_at: string;
 }
 
 export interface UserCreate {
+  username: string; 
   email: string;
   password: string;
   display_name: string;
   default_currency?: string;
   timezone?: string;
+}
+
+export interface StartingAmountItem {
+  category_id: string;
+  amount: string;
+}
+
+export interface StartingAmountSaveRequest {
+  items: StartingAmountItem[];
 }
 
 export interface UserLogin {
@@ -41,6 +53,7 @@ export interface PayCycle {
   rollover_amount: string;
   created_at: string;
   closed_at: string | null;
+  summary?: PayCycleSummary | null;
 }
 
 export interface PayCycleCreate {
@@ -53,6 +66,16 @@ export interface PayCycleUpdate {
   income_amount?: string;
   start_date?: string;
   end_date?: string;
+}
+
+export interface PayCycleCloseAllocation {
+  category_id: string;
+  amount: string;
+}
+
+export interface PayCycleCloseRequest {
+  actual_income_amount: string;
+  category_allocations: PayCycleCloseAllocation[];
 }
 
 export interface PayCycleSummary {
@@ -108,6 +131,9 @@ export interface CategoryCreate {
   icon?: string;
   color?: string;
   is_shared?: boolean;
+  pay_cycle_id?: string;
+  allocation_type?: 'percentage' | 'fixed';
+  allocation_value?: string;
 }
 
 export interface CategoryUpdate {
@@ -115,6 +141,9 @@ export interface CategoryUpdate {
   icon?: string;
   color?: string;
   is_shared?: boolean;
+  pay_cycle_id?: string;
+  allocation_type?: 'percentage' | 'fixed';
+  allocation_value?: string;
 }
 
 // CategoryGoal types
@@ -126,6 +155,11 @@ export interface CategoryGoal {
   goal_value: string;
   rollover_balance: string;
   created_at: string;
+  effective_budget?: string;
+  spent?: string;
+  remaining?: string;
+  completion_percentage?: number;
+  is_over_budget?: boolean;
 }
 
 export interface CategoryGoalCreate {

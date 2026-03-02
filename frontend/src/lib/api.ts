@@ -45,8 +45,29 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'An error occurred' }));
-      throw new Error(error.detail || `HTTP ${response.status}`);
+      const errorData = await response.json().catch(() => null);
+    
+      console.error('API Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        data: errorData,
+      });
+    
+      let message = `Request failed with status ${response.status}`;
+    
+      if (Array.isArray(errorData?.detail)) {
+        // FastAPI validation error format
+        message = errorData.detail.map((e: any) => e.msg).join(', ');
+      } else if (typeof errorData?.detail === 'string') {
+        message = errorData.detail;
+      } else if (typeof errorData?.detail === 'object' && errorData?.detail !== null) {
+        // Object case like { email: "Email exists" }
+        message = Object.values(errorData.detail).join(', ');
+      } else if (typeof errorData?.message === 'string') {
+        message = errorData.message;
+      }
+    
+      throw new Error(String(message));
     }
 
     // Handle 204 No Content
@@ -84,6 +105,34 @@ class ApiClient {
     });
   }
 
+  async getStartingAmounts() {
+    return this.request<import('@/types/api').StartingAmountItem[]>('/users/me/starting-amounts');
+  }
+
+  async saveStartingAmounts(data: import('@/types/api').StartingAmountSaveRequest) {
+    return this.request<import('@/types/api').StartingAmountItem[]>('/users/me/starting-amounts', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async completeSetup() {
+    return this.request<import('@/types/api').User>('/users/me/complete-setup', {
+      method: 'POST',
+    });
+  }
+
+  async resetPassword(data: {
+    email: string;
+    username: string;
+    new_password: string;
+  }) {
+    return this.request<{ message: string }>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   // PayCycle endpoints
   async getPayCycles() {
     return this.request<import('@/types/api').PayCycle[]>('/pay-cycles');
@@ -111,9 +160,10 @@ class ApiClient {
     });
   }
 
-  async closePayCycle(id: string) {
-    return this.request<import('@/types/api').PayCycleSummary>(`/pay-cycles/${id}/close`, {
+  async closePayCycle(id: string, data?: import('@/types/api').PayCycleCloseRequest) {
+    return this.request<import('@/types/api').PayCycle>(`/pay-cycles/${id}/close`, {
       method: 'POST',
+      body: data ? JSON.stringify(data) : undefined,
     });
   }
 
@@ -148,18 +198,18 @@ class ApiClient {
 
   // CategoryGoal endpoints
   async getCategoryGoals(payCycleId: string) {
-    return this.request<import('@/types/api').CategoryGoal[]>(`/goals?pay_cycle_id=${payCycleId}`);
+    return this.request<import('@/types/api').CategoryGoal[]>(`/goals/category/?pay_cycle_id=${payCycleId}`);
   }
 
   async createCategoryGoal(data: import('@/types/api').CategoryGoalCreate) {
-    return this.request<import('@/types/api').CategoryGoal>('/goals', {
+    return this.request<import('@/types/api').CategoryGoal>('/goals/category', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
   async updateCategoryGoal(id: string, data: import('@/types/api').CategoryGoalUpdate) {
-    return this.request<import('@/types/api').CategoryGoal>(`/goals/${id}`, {
+    return this.request<import('@/types/api').CategoryGoal>(`/goals/category/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     });

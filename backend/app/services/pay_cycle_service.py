@@ -1,7 +1,7 @@
 """
 PayCycle service for managing budget periods.
 """
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, List
 from sqlalchemy import select, and_
@@ -11,6 +11,8 @@ from sqlalchemy.orm import selectinload
 from app.models.pay_cycle import PayCycle
 from app.models.pay_cycle_summary import PayCycleSummary
 from app.models.category_goal import CategoryGoal
+from app.models.starting_amount import StartingAmount
+from app.models.category import Category
 from app.models.transaction import Transaction
 from app.schemas.pay_cycle import PayCycleCreate, PayCycleUpdate
 from app.core.exceptions import NotFoundException, BadRequestException
@@ -54,6 +56,12 @@ class PayCycleService:
     
     async def create(self, user_id: str, data: PayCycleCreate) -> PayCycle:
         """Create a new pay cycle."""
+        # Determine whether this is the user's first cycle
+        cycle_count_result = await self.db.execute(
+            select(PayCycle.id).where(PayCycle.user_id == user_id)
+        )
+        is_first_cycle = cycle_count_result.first() is None
+
         # Check for overlapping cycles
         existing = await self.db.execute(
             select(PayCycle).where(
@@ -67,14 +75,13 @@ class PayCycleService:
         if existing.scalar_one_or_none():
             raise BadRequestException(detail="Pay cycle dates overlap with existing cycle")
         
-        # Determine status
+        # Determine status on creation.
+        # Past cycles should still require an explicit manual close action.
         today = datetime.now(timezone.utc).date()
-        if data.start_date <= today <= data.end_date:
-            status = "active"
-        elif data.start_date > today:
+        if data.start_date > today:
             status = "upcoming"
         else:
-            status = "closed"
+            status = "active"
         
         pay_cycle = PayCycle(
             user_id=user_id,
@@ -85,6 +92,10 @@ class PayCycleService:
         )
         self.db.add(pay_cycle)
         await self.db.flush()
+
+        if is_first_cycle:
+            await self._seed_first_cycle_starting_amounts(user_id, pay_cycle.id)
+
         return pay_cycle
     
     async def update(self, pay_cycle_id: str, user_id: str, data: PayCycleUpdate) -> PayCycle:
@@ -129,6 +140,8 @@ class PayCycleService:
         user_id: str, 
         rollover_service: "RolloverService",
         goal_service: "GoalService",
+        actual_income_amount: Optional[Decimal] = None,
+        category_allocations: Optional[dict[str, Decimal]] = None,
     ) -> PayCycle:
         """Close a pay cycle, generate summary, and process rollovers."""
         from app.services.rollover_service import RolloverService
@@ -140,13 +153,22 @@ class PayCycleService:
         
         if pay_cycle.status == "closed":
             raise BadRequestException(detail="Pay cycle is already closed")
+
+        if actual_income_amount is not None:
+            pay_cycle.income_amount = actual_income_amount
+
+        if category_allocations is not None:
+            await self._validate_manual_allocations(pay_cycle, user_id, category_allocations)
         
         # Generate summary
         summary = await self._generate_summary(pay_cycle, goal_service)
         self.db.add(summary)
         
         # Process rollovers to next cycle
-        await rollover_service.process_rollovers(pay_cycle)
+        if category_allocations is not None:
+            await rollover_service.process_manual_rollovers(pay_cycle, category_allocations)
+        else:
+            await rollover_service.process_rollovers(pay_cycle)
         
         # Update status
         pay_cycle.status = "closed"
@@ -154,6 +176,42 @@ class PayCycleService:
         
         await self.db.flush()
         return pay_cycle
+
+    async def _validate_manual_allocations(
+        self,
+        pay_cycle: PayCycle,
+        user_id: str,
+        category_allocations: dict[str, Decimal],
+    ) -> None:
+        """Validate that manual allocations match cycle remainder and category goals."""
+        # Validate categories belong to the user.
+        categories_result = await self.db.execute(
+            select(Category.id).where(Category.user_id == user_id)
+        )
+        valid_category_ids = {row.id for row in categories_result.all()}
+        invalid_ids = [category_id for category_id in category_allocations if category_id not in valid_category_ids]
+        if invalid_ids:
+            raise BadRequestException(detail="Allocations contain invalid categories")
+
+        # Calculate total expenses for this cycle.
+        tx_result = await self.db.execute(
+            select(Transaction).where(
+                and_(
+                    Transaction.pay_cycle_id == pay_cycle.id,
+                    Transaction.user_id == user_id,
+                    Transaction.type == "expense",
+                )
+            )
+        )
+        expenses = sum((tx.amount for tx in tx_result.scalars().all()), Decimal("0.00"))
+
+        remainder = pay_cycle.income_amount - expenses
+        if remainder < Decimal("0.00"):
+            raise BadRequestException(detail="Expenses exceed actual income; no remainder available to allocate")
+
+        allocated_total = sum(category_allocations.values(), Decimal("0.00"))
+        if allocated_total != remainder:
+            raise BadRequestException(detail="Category allocations must exactly equal the remaining amount")
     
     async def _generate_summary(self, pay_cycle: PayCycle, goal_service: "GoalService") -> PayCycleSummary:
         """Generate summary statistics for a pay cycle."""
@@ -241,6 +299,35 @@ class PayCycleService:
             variances=variances,
             rollover_generated=total_rollover,
         )
+
+    async def _seed_first_cycle_starting_amounts(self, user_id: str, pay_cycle_id: str) -> None:
+        """Seed first pay cycle with setup starting amounts as rollover balances."""
+        result = await self.db.execute(
+            select(StartingAmount).where(StartingAmount.user_id == user_id)
+        )
+        starting_amounts = list(result.scalars().all())
+        if not starting_amounts:
+            return
+
+        # Prevent duplicate inserts if goals already exist.
+        existing_result = await self.db.execute(
+            select(CategoryGoal.category_id).where(CategoryGoal.pay_cycle_id == pay_cycle_id)
+        )
+        existing_ids = {row.category_id for row in existing_result.all()}
+
+        for item in starting_amounts:
+            if item.category_id in existing_ids:
+                continue
+            self.db.add(
+                CategoryGoal(
+                    category_id=item.category_id,
+                    pay_cycle_id=pay_cycle_id,
+                    goal_type="fixed",
+                    goal_value=Decimal("0.00"),
+                    rollover_balance=item.amount,
+                )
+            )
+        await self.db.flush()
     
     async def get_summary(self, pay_cycle_id: str, user_id: str) -> Optional[PayCycleSummary]:
         """Get summary for a pay cycle."""

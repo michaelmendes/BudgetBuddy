@@ -81,6 +81,46 @@ class RolloverService:
         await self.db.flush()
         
         return total_rollover
+
+    async def process_manual_rollovers(
+        self,
+        closed_cycle: PayCycle,
+        category_allocations: dict[str, Decimal],
+    ) -> Decimal:
+        """
+        Apply user-defined rollover allocations to the next cycle.
+        Returns total rollover amount applied.
+        """
+        next_cycle = await self._get_next_cycle(closed_cycle)
+        if not next_cycle:
+            closed_cycle.rollover_amount = Decimal("0.00")
+            await self.db.flush()
+            return Decimal("0.00")
+
+        result = await self.db.execute(
+            select(CategoryGoal)
+            .options(selectinload(CategoryGoal.category))
+            .where(CategoryGoal.pay_cycle_id == closed_cycle.id)
+        )
+        current_goals = list(result.scalars().all())
+        goals_by_category = {goal.category_id: goal for goal in current_goals}
+
+        total_rollover = Decimal("0.00")
+        for category_id, rollover_amount in category_allocations.items():
+            if rollover_amount <= 0:
+                continue
+            original_goal = goals_by_category.get(category_id)
+            total_rollover += rollover_amount
+            await self._apply_rollover_to_next_cycle(
+                next_cycle=next_cycle,
+                category_id=category_id,
+                rollover_amount=rollover_amount,
+                original_goal=original_goal,
+            )
+
+        closed_cycle.rollover_amount = total_rollover
+        await self.db.flush()
+        return total_rollover
     
     async def _get_next_cycle(self, current_cycle: PayCycle) -> Optional[PayCycle]:
         """Get the next pay cycle after the current one."""
@@ -102,7 +142,7 @@ class RolloverService:
         next_cycle: PayCycle,
         category_id: str,
         rollover_amount: Decimal,
-        original_goal: CategoryGoal,
+        original_goal: Optional[CategoryGoal] = None,
     ) -> CategoryGoal:
         """Apply rollover amount to the corresponding goal in the next cycle."""
         # Check if goal already exists for this category in next cycle
@@ -124,8 +164,8 @@ class RolloverService:
             next_goal = CategoryGoal(
                 category_id=category_id,
                 pay_cycle_id=next_cycle.id,
-                goal_type=original_goal.goal_type,
-                goal_value=original_goal.goal_value,
+                goal_type=original_goal.goal_type if original_goal else "fixed",
+                goal_value=original_goal.goal_value if original_goal else Decimal("0.00"),
                 rollover_balance=rollover_amount,
             )
             self.db.add(next_goal)

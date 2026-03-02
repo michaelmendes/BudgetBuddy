@@ -11,6 +11,7 @@ from app.schemas.pay_cycle import (
     PayCycleResponse, 
     PayCycleWithSummary,
     PayCycleSummaryResponse,
+    PayCycleCloseRequest,
 )
 from app.services.pay_cycle_service import PayCycleService
 from app.services.rollover_service import RolloverService
@@ -96,6 +97,7 @@ async def close_pay_cycle(
     pay_cycle_id: str,
     current_user: CurrentUser,
     db: DbSession,
+    data: Optional[PayCycleCloseRequest] = None,
 ):
     """
     Close a pay cycle.
@@ -113,6 +115,12 @@ async def close_pay_cycle(
         current_user.id, 
         rollover_service,
         goal_service,
+        actual_income_amount=data.actual_income_amount if data else None,
+        category_allocations=(
+            {allocation.category_id: allocation.amount for allocation in data.category_allocations}
+            if data
+            else None
+        ),
     )
     return cycle
 

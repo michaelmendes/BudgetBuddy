@@ -4,6 +4,7 @@ import type {
   PayCycle,
   PayCycleCreate,
   PayCycleUpdate,
+  PayCycleCloseRequest,
   PayCycleSummary,
   Category,
   CategoryCreate,
@@ -25,6 +26,8 @@ import type {
   LeaderboardEntry,
   UserStats,
   Nudge,
+  StartingAmountItem,
+  StartingAmountSaveRequest,
 } from '@/types/api';
 
 // PayCycle hooks
@@ -85,12 +88,13 @@ export function useUpdatePayCycle() {
 export function useClosePayCycle() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.closePayCycle(id),
-    onSuccess: (_, id) => {
+    mutationFn: ({ id, data }: { id: string; data?: PayCycleCloseRequest }) => api.closePayCycle(id, data),
+    onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['payCycles'] });
       queryClient.invalidateQueries({ queryKey: ['payCycle', id] });
       queryClient.invalidateQueries({ queryKey: ['payCycle', 'active'] });
       queryClient.invalidateQueries({ queryKey: ['payCycleSummary', id] });
+      queryClient.invalidateQueries({ queryKey: ['categoryGoals'] });
     },
   });
 }
@@ -107,8 +111,11 @@ export function useCreateCategory() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CategoryCreate) => api.createCategory(data),
-    onSuccess: () => {
+    onSuccess: (_, data) => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
+      if (data.pay_cycle_id) {
+        queryClient.invalidateQueries({ queryKey: ['categoryGoals', data.pay_cycle_id] });
+      }
     },
   });
 }
@@ -118,8 +125,13 @@ export function useUpdateCategory() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: CategoryUpdate }) =>
       api.updateCategory(id, data),
-    onSuccess: () => {
+    onSuccess: (_, { data }) => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
+      if (data.pay_cycle_id) {
+        queryClient.invalidateQueries({ queryKey: ['categoryGoals', data.pay_cycle_id] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['categoryGoals'] });
+      }
     },
   });
 }
@@ -394,5 +406,33 @@ export function useNudges() {
     queryKey: ['nudges'],
     queryFn: () => api.getNudges(),
     refetchInterval: 60000, // Refresh every minute
+  });
+}
+
+// Setup wizard hooks
+export function useStartingAmounts() {
+  return useQuery({
+    queryKey: ['startingAmounts'],
+    queryFn: () => api.getStartingAmounts(),
+  });
+}
+
+export function useSaveStartingAmounts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: StartingAmountSaveRequest) => api.saveStartingAmounts(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['startingAmounts'] });
+    },
+  });
+}
+
+export function useCompleteSetup() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.completeSetup(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+    },
   });
 }

@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.transaction import Transaction
     from app.models.category_goal import CategoryGoal
     from app.models.recurring_transaction import RecurringTransaction
+    from app.models.starting_amount import StartingAmount
 
 
 class Category(Base):
@@ -54,4 +55,7 @@ class Category(Base):
     )
     recurring_transactions: Mapped[List["RecurringTransaction"]] = relationship(
         "RecurringTransaction", back_populates="category", cascade="all, delete-orphan"
+    )
+    starting_amounts: Mapped[List["StartingAmount"]] = relationship(
+        "StartingAmount", back_populates="category", cascade="all, delete-orphan"
     )

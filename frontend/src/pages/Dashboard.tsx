@@ -29,42 +29,10 @@ import {
 } from '@/hooks/useApi';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Link, useNavigate } from 'react-router-dom';
-
-// Mock data for demo purposes (remove when backend is connected)
-const mockNudges = [
-  {
-    id: '1',
-    type: 'warning' as const,
-    message: "You're 80% through your Dining Out budget with 10 days left.",
-    category_name: 'Dining Out',
-    category_id: '1',
-    percentage: 80,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    type: 'celebration' as const,
-    message: "Great job! You've stayed under budget for Groceries this cycle! 🎉",
-    category_name: 'Groceries',
-    category_id: '2',
-    created_at: new Date().toISOString(),
-  },
-];
-
-const mockStats = {
-  current_streak: 14,
-  longest_streak: 21,
-  total_goals_met: 45,
-  badges: [
-    { id: '1', name: 'First Saver', description: 'Completed first budget cycle', icon: '🏆', tier: 'gold' as const, earned_at: '' },
-    { id: '2', name: 'Week Warrior', description: '7-day streak', icon: '⚡', tier: 'silver' as const, earned_at: '' },
-    { id: '3', name: 'Budget Master', description: 'Under budget 3 months in a row', icon: '💰', tier: 'bronze' as const, earned_at: '' },
-  ],
-  level: 5,
-  experience_points: 475,
-};
+import { useState } from 'react';
 
 export default function DashboardPage() {
+  const [showAllCategories, setShowAllCategories] = useState(false);
   const navigate = useNavigate();
   const { data: activeCycle, isLoading: cycleLoading } = useActivePayCycle();
   const { data: allCycles } = usePayCycles();
@@ -72,6 +40,8 @@ export default function DashboardPage() {
   const { data: categoryGoals } = useCategoryGoals(activeCycle?.id);
   const { data: categoryTotals } = useCategoryTotals(activeCycle?.id);
   const { data: totals } = useTransactionTotals(activeCycle?.id);
+  const { data: userStats } = useUserStats();
+  const { data: nudges } = useNudges();
 
   // Calculate overall stats
   const income = activeCycle ? parseDecimal(activeCycle.income_amount) : 0;
@@ -97,6 +67,7 @@ export default function DashboardPage() {
     const spent = categoryTotals?.[cat.id] || 0;
     return { category: cat, goal, spent };
   }) || [];
+  const visibleCategoryProgress = showAllCategories ? categoryProgress : categoryProgress.slice(0, 6);
 
   if (cycleLoading) {
     return <DashboardSkeleton />;
@@ -118,7 +89,7 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <StreakBadge streak={mockStats.current_streak} />
+          <StreakBadge streak={userStats?.current_streak ?? 0} />
           <Button asChild>
             <Link to="/transactions/new">
               <Plus className="mr-2 h-4 w-4" />
@@ -129,7 +100,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Nudges */}
-      <NudgeList nudges={mockNudges} />
+      <NudgeList nudges={nudges ?? []} />
 
       {/* Main Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -177,18 +148,23 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 sm:grid-cols-2">
-              {categoryProgress.slice(0, 6).map(({ category, goal, spent }) => (
+              {visibleCategoryProgress.map(({ category, goal, spent }) => (
                 <CategoryProgressCard
                   key={category.id}
                   category={category}
                   goal={goal}
                   spent={spent}
+                  cycleIncome={income}
                 />
               ))}
             </div>
             {categoryProgress.length > 6 && (
-              <Button variant="ghost" className="w-full mt-4" asChild>
-                <Link to="/categories">View all categories</Link>
+              <Button
+                variant="ghost"
+                className="w-full mt-4"
+                onClick={() => setShowAllCategories((current) => !current)}
+              >
+                {showAllCategories ? 'Show fewer categories' : 'View all categories'}
               </Button>
             )}
           </CardContent>
@@ -201,7 +177,11 @@ export default function DashboardPage() {
               <CardTitle>Your Progress</CardTitle>
             </CardHeader>
             <CardContent>
-              <GamificationStats stats={mockStats} />
+              {userStats ? (
+                <GamificationStats stats={userStats} />
+              ) : (
+                <p className="text-sm text-muted-foreground">No progress stats available yet.</p>
+              )}
             </CardContent>
           </Card>
 

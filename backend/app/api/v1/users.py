@@ -5,6 +5,7 @@ from fastapi import APIRouter
 
 from app.api.v1.deps import DbSession, CurrentUser
 from app.schemas.user import UserResponse, UserUpdate
+from app.schemas.starting_amount import StartingAmountSaveRequest, StartingAmountItem
 from app.services.user_service import UserService
 
 router = APIRouter()
@@ -36,3 +37,39 @@ async def delete_current_user(
     """Delete the current user's account."""
     service = UserService(db)
     await service.delete(current_user.id)
+
+
+@router.get("/me/starting-amounts", response_model=list[StartingAmountItem])
+async def get_starting_amounts(
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    service = UserService(db)
+    amounts = await service.list_starting_amounts(current_user.id)
+    return [
+        StartingAmountItem(category_id=item.category_id, amount=item.amount)
+        for item in amounts
+    ]
+
+
+@router.put("/me/starting-amounts", response_model=list[StartingAmountItem])
+async def save_starting_amounts(
+    payload: StartingAmountSaveRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    service = UserService(db)
+    amounts = await service.save_starting_amounts(current_user.id, payload)
+    return [
+        StartingAmountItem(category_id=item.category_id, amount=item.amount)
+        for item in amounts
+    ]
+
+
+@router.post("/me/complete-setup", response_model=UserResponse)
+async def complete_setup(
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    service = UserService(db)
+    return await service.complete_setup(current_user.id)

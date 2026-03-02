@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from app.models.category import Category
     from app.models.long_term_goal import LongTermGoal
     from app.models.friendship import Friendship
+    from app.models.starting_amount import StartingAmount
 
 
 class User(Base):
@@ -30,6 +31,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
     
     # Pay cycle settings
     default_pay_amount: Mapped[Optional[Decimal]] = mapped_column(
@@ -39,6 +41,7 @@ class User(Base):
         String(20), default="biweekly"  # weekly, biweekly, monthly
     )
     next_pay_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    setup_completed: Mapped[bool] = mapped_column(default=False)
     
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -69,4 +72,7 @@ class User(Base):
         foreign_keys="Friendship.addressee_id",
         back_populates="addressee",
         cascade="all, delete-orphan",
+    )
+    starting_amounts: Mapped[List["StartingAmount"]] = relationship(
+        "StartingAmount", back_populates="user", cascade="all, delete-orphan"
     )

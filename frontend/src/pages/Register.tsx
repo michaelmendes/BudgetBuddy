@@ -11,7 +11,12 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Loader2, Wallet } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
+/* -------------------- */
+/* Validation Schema    */
+/* -------------------- */
+
 const registerSchema = z.object({
+  username: z.string().min(3, 'Username must be at least 3 characters'),
   display_name: z.string().min(2, 'Name must be at least 2 characters'),
   email: z.string().email('Please enter a valid email'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
@@ -23,6 +28,69 @@ const registerSchema = z.object({
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
+/* -------------------- */
+/* Error Parsing Helper */
+/* -------------------- */
+
+function extractErrorMessage(error: unknown): {
+  message: string;
+  statusCode?: number;
+} {
+  console.group('🔎 Extracting Error Details');
+  console.error('Raw error:', error);
+
+  // Axios-style error
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error
+  ) {
+    const axiosError = error as any;
+
+    const statusCode = axiosError.response?.status;
+    const data = axiosError.response?.data;
+
+    console.error('Detected Axios-style error');
+    console.error('Status Code:', statusCode);
+    console.error('Response Data:', data);
+
+    const message =
+      data?.message ||
+      data?.detail ||
+      (typeof data === 'string' ? data : undefined) ||
+      'Server error occurred.';
+
+    console.groupEnd();
+    return { message, statusCode };
+  }
+
+  // Standard JS Error
+  if (error instanceof Error) {
+    console.error('Detected standard Error instance');
+    console.error('Message:', error.message);
+    console.error('Stack:', error.stack);
+
+    console.groupEnd();
+    return { message: error.message };
+  }
+
+  // Likely network failure (fetch)
+  if (error instanceof TypeError) {
+    console.error('Likely network or CORS error.');
+    console.groupEnd();
+    return { message: 'Unable to reach the server. Please check your connection.' };
+  }
+
+  // Fallback
+  console.error('Unknown error structure.');
+  console.groupEnd();
+  return { message: 'An unexpected error occurred.' };
+}
+
+/* -------------------- */
+/* Component            */
+/* -------------------- */
+
 export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { register } = useAuth();
@@ -32,6 +100,7 @@ export default function RegisterPage() {
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
+      username: '',
       display_name: '',
       email: '',
       password: '',
@@ -40,26 +109,55 @@ export default function RegisterPage() {
   });
 
   async function onSubmit(data: RegisterFormValues) {
+    console.group('🚀 Register Attempt');
+
+    console.log('Submitting form with values:', {
+      ...data,
+      password: '***',
+      confirmPassword: '***',
+    });
+
     setIsLoading(true);
+
     try {
-      await register({
+      console.log('Calling AuthContext.register()...');
+
+      const result = await register({
+        username: data.username,
         email: data.email,
         password: data.password,
         display_name: data.display_name,
       });
+
+      console.log('✅ Registration succeeded:', result);
+
       toast({
         title: 'Welcome aboard! 🎉',
         description: 'Your account has been created successfully.',
       });
-      navigate('/dashboard', { replace: true });
-    } catch (error) {
+
+      console.log('Navigating to /setup/categories...');
+      navigate('/setup/categories', { replace: true });
+      console.log('Navigation triggered successfully.');
+    } catch (error: unknown) {
+      console.error('❌ Registration failed.');
+
+      const { message, statusCode } = extractErrorMessage(error);
+
+      console.error('Final parsed error message:', message);
+      if (statusCode) {
+        console.error('HTTP Status Code:', statusCode);
+      }
+
       toast({
         title: 'Registration failed',
-        description: error instanceof Error ? error.message : 'Please try again',
+        description: message,
         variant: 'destructive',
       });
     } finally {
       setIsLoading(false);
+      console.log('Register attempt complete.');
+      console.groupEnd();
     }
   }
 
@@ -75,9 +173,38 @@ export default function RegisterPage() {
             Start your journey to better financial habits
           </CardDescription>
         </CardHeader>
+
         <CardContent>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form
+              onSubmit={form.handleSubmit(
+                onSubmit,
+                (errors) => {
+                  console.group('❌ Validation Failed');
+                  console.error('Validation errors:', errors);
+                  console.groupEnd();
+                }
+              )}
+              className="space-y-4"
+            >
+              <FormField
+                control={form.control}
+                name="username"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Username</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Your username"
+                        autoComplete="username"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <FormField
                 control={form.control}
                 name="display_name"
@@ -85,16 +212,17 @@ export default function RegisterPage() {
                   <FormItem>
                     <FormLabel>Display Name</FormLabel>
                     <FormControl>
-                      <Input 
-                        placeholder="Your name" 
+                      <Input
+                        placeholder="Your name"
                         autoComplete="name"
-                        {...field} 
+                        {...field}
                       />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
               <FormField
                 control={form.control}
                 name="email"
@@ -102,17 +230,18 @@ export default function RegisterPage() {
                   <FormItem>
                     <FormLabel>Email</FormLabel>
                     <FormControl>
-                      <Input 
-                        type="email" 
-                        placeholder="you@example.com" 
+                      <Input
+                        type="email"
+                        placeholder="you@example.com"
                         autoComplete="email"
-                        {...field} 
+                        {...field}
                       />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
               <FormField
                 control={form.control}
                 name="password"
@@ -120,17 +249,18 @@ export default function RegisterPage() {
                   <FormItem>
                     <FormLabel>Password</FormLabel>
                     <FormControl>
-                      <Input 
-                        type="password" 
-                        placeholder="••••••••" 
+                      <Input
+                        type="password"
+                        placeholder="••••••••"
                         autoComplete="new-password"
-                        {...field} 
+                        {...field}
                       />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
               <FormField
                 control={form.control}
                 name="confirmPassword"
@@ -138,26 +268,33 @@ export default function RegisterPage() {
                   <FormItem>
                     <FormLabel>Confirm Password</FormLabel>
                     <FormControl>
-                      <Input 
-                        type="password" 
-                        placeholder="••••••••" 
+                      <Input
+                        type="password"
+                        placeholder="••••••••"
                         autoComplete="new-password"
-                        {...field} 
+                        {...field}
                       />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isLoading && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
                 Create account
               </Button>
             </form>
           </Form>
+
           <div className="mt-6 text-center text-sm text-muted-foreground">
             Already have an account?{' '}
-            <Link to="/login" className="font-medium text-primary hover:underline">
+            <Link
+              to="/login"
+              className="font-medium text-primary hover:underline"
+            >
               Sign in
             </Link>
           </div>

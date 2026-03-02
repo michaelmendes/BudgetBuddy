@@ -9,6 +9,7 @@ import {
   Repeat,
   Target,
   Users,
+  CalendarDays,
   LogOut,
   Menu,
   X,
@@ -25,6 +26,7 @@ const navigation = [
   { name: 'Recurring', href: '/recurring', icon: Repeat },
   { name: 'Goals', href: '/goals', icon: Target },
   { name: 'Social', href: '/social', icon: Users },
+  { name: 'Pay Cycles', href: '/cycles', icon: CalendarDays },
 ];
 
 function NavItems({ onItemClick }: { onItemClick?: () => void }) {

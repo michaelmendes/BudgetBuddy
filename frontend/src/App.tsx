@@ -22,8 +22,14 @@ import GoalsPage from "@/pages/Goals";
 import SocialPage from "@/pages/Social";
 import CycleSummaryPage from "@/pages/CycleSummary";
 import NewCyclePage from "@/pages/NewCycle";
+import PayCyclePage from "@/pages/PayCycle";
+import PayCycleReviewPage from "@/pages/PayCycleReview";
+import PayCycleClosePage from "@/pages/PayCycleClose";
+import SetupCategoriesPage from "@/pages/SetupCategories";
+import StartingAmountsPage from "@/pages/StartingAmounts";
 
 import NotFound from "./pages/NotFound";
+import ResetPasswordPage from "./pages/ResetPassword";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,6 +51,7 @@ const App = () => (
             {/* Public routes */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
 
             {/* Protected routes with app layout */}
             <Route
@@ -61,8 +68,13 @@ const App = () => (
               <Route path="/recurring" element={<RecurringPage />} />
               <Route path="/goals" element={<GoalsPage />} />
               <Route path="/social" element={<SocialPage />} />
+              <Route path="/cycles" element={<PayCyclePage />} />
               <Route path="/cycles/new" element={<NewCyclePage />} />
+              <Route path="/cycles/:id/close" element={<PayCycleClosePage />} />
+              <Route path="/cycles/:id/review" element={<PayCycleReviewPage />} />
               <Route path="/cycles/:id/summary" element={<CycleSummaryPage />} />
+              <Route path="/setup/categories" element={<SetupCategoriesPage />} />
+              <Route path="/setup/starting-amounts" element={<StartingAmountsPage />} />
             </Route>
 
             {/* Redirects */}

@@ -65,3 +65,15 @@ class PayCycleSummaryResponse(BaseModel):
 class PayCycleWithSummary(PayCycleResponse):
     """Pay cycle with optional summary included."""
     summary: Optional[PayCycleSummaryResponse] = None
+
+
+class PayCycleCloseAllocation(BaseModel):
+    """Manual rollover allocation for a category when closing a cycle."""
+    category_id: str
+    amount: Decimal = Field(..., ge=0, decimal_places=2)
+
+
+class PayCycleCloseRequest(BaseModel):
+    """Payload for closing a cycle with actual income and manual rollover allocations."""
+    actual_income_amount: Decimal = Field(..., ge=0, decimal_places=2)
+    category_allocations: List[PayCycleCloseAllocation] = Field(default_factory=list)

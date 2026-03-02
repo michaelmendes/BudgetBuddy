@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -7,6 +7,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -26,7 +33,11 @@ import {
 } from '@/components/ui/form';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { formatCurrency, isValidDecimal, parseDecimal } from '@/lib/decimal';
 import {
+  useActivePayCycle,
+  usePayCycles,
+  useCategoryGoals,
   useCategories,
   useCreateCategory,
   useUpdateCategory,
@@ -52,6 +63,15 @@ const categorySchema = z.object({
   icon: z.string().min(1, 'Please select an icon'),
   color: z.string().optional(),
   is_shared: z.boolean().default(false),
+  allocation_type: z.enum(['percentage', 'fixed']),
+  allocation_value: z
+    .string()
+    .min(1, 'Allocation is required')
+    .refine((value) => isValidDecimal(value), 'Please enter a valid amount')
+    .refine((value) => Number(value) >= 0, 'Allocation must be 0 or greater'),
+}).refine((data) => data.allocation_type !== 'percentage' || Number(data.allocation_value) <= 100, {
+  path: ['allocation_value'],
+  message: 'Percentage allocation cannot exceed 100',
 });
 
 type CategoryFormValues = z.infer<typeof categorySchema>;
@@ -61,7 +81,13 @@ export default function CategoriesPage() {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
 
   const { toast } = useToast();
+  const { data: activeCycle } = useActivePayCycle();
+  const { data: payCycles } = usePayCycles();
+  const targetCycle = activeCycle ?? payCycles?.find((cycle) => cycle.status === 'upcoming');
+  const targetCycleId = targetCycle?.id;
+
   const { data: categories, isLoading } = useCategories();
+  const { data: categoryGoals } = useCategoryGoals(targetCycleId);
   const createCategory = useCreateCategory();
   const updateCategory = useUpdateCategory();
   const deleteCategory = useDeleteCategory();
@@ -73,10 +99,27 @@ export default function CategoriesPage() {
       icon: '📁',
       color: 'category-other',
       is_shared: false,
+      allocation_type: 'fixed',
+      allocation_value: '',
     },
   });
 
+  useEffect(() => {
+    if (!isDialogOpen || !editingCategory) return;
+
+    const goal = categoryGoals?.find((item) => item.category_id === editingCategory.id);
+    if (!goal) return;
+
+    const currentValue = form.getValues('allocation_value');
+    const currentType = form.getValues('allocation_type');
+    if (currentValue === '' || currentType !== goal.goal_type) {
+      form.setValue('allocation_type', goal.goal_type, { shouldValidate: true });
+      form.setValue('allocation_value', goal.goal_value, { shouldValidate: true });
+    }
+  }, [isDialogOpen, editingCategory, categoryGoals, form]);
+
   const handleOpenDialog = (category?: Category) => {
+    const goal = category ? categoryGoals?.find((item) => item.category_id === category.id) : null;
     if (category) {
       setEditingCategory(category);
       form.reset({
@@ -84,6 +127,8 @@ export default function CategoriesPage() {
         icon: category.icon || '📁',
         color: category.color || 'category-other',
         is_shared: category.is_shared,
+        allocation_type: goal?.goal_type || 'fixed',
+        allocation_value: goal?.goal_value || '',
       });
     } else {
       setEditingCategory(null);
@@ -92,20 +137,34 @@ export default function CategoriesPage() {
         icon: '📁',
         color: 'category-other',
         is_shared: false,
+        allocation_type: 'fixed',
+        allocation_value: '',
       });
     }
     setIsDialogOpen(true);
   };
 
   const handleSubmit = async (values: CategoryFormValues) => {
+    if (!targetCycleId) {
+      toast({
+        title: 'No editable pay cycle',
+        description: 'Create or activate a pay cycle before setting category allocations.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
       const data = {
         name: values.name,
         icon: values.icon,
         color: values.color,
         is_shared: values.is_shared,
+        pay_cycle_id: targetCycleId,
+        allocation_type: values.allocation_type,
+        allocation_value: values.allocation_value,
       };
-      
+
       if (editingCategory) {
         await updateCategory.mutateAsync({
           id: editingCategory.id,
@@ -116,6 +175,7 @@ export default function CategoriesPage() {
         await createCategory.mutateAsync(data);
         toast({ title: 'Category created' });
       }
+
       setIsDialogOpen(false);
       form.reset();
     } catch (error) {
@@ -211,6 +271,55 @@ export default function CategoriesPage() {
                 />
                 <FormField
                   control={form.control}
+                  name="allocation_type"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Allocation Type</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="fixed">Fixed amount ($)</SelectItem>
+                          <SelectItem value="percentage">Percentage of cycle income (%)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        Choose whether this category uses a dollar cap or a percentage of your cycle income.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="allocation_value"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        {form.watch('allocation_type') === 'percentage'
+                          ? 'Allocation (%)'
+                          : 'Allocation Amount ($)'}
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder={form.watch('allocation_type') === 'percentage' ? 'e.g., 15' : 'e.g., 250.00'}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {form.watch('allocation_type') === 'percentage'
+                          ? 'Enter 0 to 100.'
+                          : 'Enter a fixed dollar amount for this cycle.'}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
                   name="is_shared"
                   render={({ field }) => (
                     <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
@@ -232,7 +341,10 @@ export default function CategoriesPage() {
                   </Button>
                   <Button
                     type="submit"
-                    disabled={createCategory.isPending || updateCategory.isPending}
+                    disabled={
+                      createCategory.isPending ||
+                      updateCategory.isPending
+                    }
                   >
                     {editingCategory ? 'Update' : 'Create'} Category
                   </Button>
@@ -261,7 +373,7 @@ export default function CategoriesPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {categories?.map((category) => (
             <Card key={category.id} className="overflow-hidden">
-              <CardContent className="p-4">
+              <CardContent className="p-4 space-y-3">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <span className="text-3xl" role="img" aria-label={category.name}>
@@ -269,17 +381,9 @@ export default function CategoriesPage() {
                     </span>
                     <div>
                       <h3 className="font-semibold text-foreground">{category.name}</h3>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        {category.is_shared && (
-                          <span className="inline-flex items-center gap-1 text-primary">
-                            <Share2 className="h-3 w-3" />
-                            Shared
-                          </span>
-                        )}
-                        {category.is_default && (
-                          <span className="text-muted-foreground">Default</span>
-                        )}
-                      </div>
+                      {category.is_default && (
+                        <div className="text-sm text-muted-foreground">Default</div>
+                      )}
                     </div>
                   </div>
                   <div className="flex gap-1">
@@ -303,6 +407,39 @@ export default function CategoriesPage() {
                     )}
                   </div>
                 </div>
+                {(() => {
+                  const goal = categoryGoals?.find((item) => item.category_id === category.id);
+                  const showAllocation = !!goal && parseDecimal(goal.goal_value) !== 0;
+                  if (!showAllocation && !category.is_shared) return null;
+
+                  const allocationLabel = showAllocation && goal
+                    ? goal.goal_type === 'percentage'
+                      ? `${Number(goal.goal_value)}% of cycle income`
+                      : `${formatCurrency(goal.goal_value)} fixed`
+                    : '';
+
+                  return (
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      {showAllocation ? (
+                        <span>
+                          Allocation:{' '}
+                          <span className="font-medium text-foreground">
+                            {allocationLabel}
+                          </span>
+                        </span>
+                      ) : (
+                        <span />
+                      )}
+
+                      {category.is_shared && (
+                        <span className="inline-flex items-center gap-1 text-primary">
+                          <Share2 className="h-3 w-3" />
+                          Shared
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
           ))}

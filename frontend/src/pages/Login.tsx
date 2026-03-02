@@ -117,6 +117,10 @@ export default function LoginPage() {
             <Link to="/register" className="font-medium text-primary hover:underline">
               Create one
             </Link>
+            <br />
+            <Link to="/reset-password" className="font-medium text-primary hover:underline">
+              Forgot Password?
+            </Link>
           </div>
         </CardContent>
       </Card>
