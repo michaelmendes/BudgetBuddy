@@ -138,6 +138,10 @@ class ApiClient {
     return this.request<import('@/types/api').PayCycle[]>('/pay-cycles');
   }
 
+  async getDashboard() {
+    return this.request<import('@/types/api').DashboardData>('/dashboard');
+  }
+
   async getActivePayCycle() {
     return this.request<import('@/types/api').PayCycle>('/pay-cycles/active');
   }
@@ -197,8 +201,9 @@ class ApiClient {
   }
 
   // CategoryGoal endpoints
-  async getCategoryGoals(payCycleId: string) {
-    return this.request<import('@/types/api').CategoryGoal[]>(`/goals/category/?pay_cycle_id=${payCycleId}`);
+  async getCategoryGoals(payCycleId?: string) {
+    const query = payCycleId ? `?pay_cycle_id=${payCycleId}` : '';
+    return this.request<import('@/types/api').CategoryGoal[]>(`/goals/category${query}`);
   }
 
   async createCategoryGoal(data: import('@/types/api').CategoryGoalCreate) {
@@ -343,7 +348,7 @@ class ApiClient {
 
   // Social endpoints (privacy-restricted)
   async getFriendProgress() {
-    return this.request<import('@/types/api').FriendProgress[]>('/social/friends/progress');
+    return this.request<import('@/types/api').FriendProgress[]>('/social/friends');
   }
 
   async getLeaderboard() {

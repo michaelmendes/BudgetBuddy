@@ -5,10 +5,11 @@ from decimal import Decimal
 from typing import Optional
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.models.pay_cycle import PayCycle
 from app.models.category_goal import CategoryGoal
+from app.models.category_rollover import CategoryRollover
+from app.models.category import Category
 from app.models.transaction import Transaction
 
 
@@ -29,10 +30,19 @@ class RolloverService:
         # Get all category goals for the closed cycle
         result = await self.db.execute(
             select(CategoryGoal)
-            .options(selectinload(CategoryGoal.category))
-            .where(CategoryGoal.pay_cycle_id == closed_cycle.id)
+            .join(Category)
+            .where(Category.user_id == closed_cycle.user_id)
         )
         goals = list(result.scalars().all())
+        goals_by_category = {goal.category_id: goal for goal in goals}
+
+        rollover_result = await self.db.execute(
+            select(CategoryRollover).where(CategoryRollover.pay_cycle_id == closed_cycle.id)
+        )
+        rollover_by_category = {
+            rollover.category_id: rollover.rollover_balance
+            for rollover in rollover_result.scalars().all()
+        }
         
         # Get spending per category
         result = await self.db.execute(
@@ -54,16 +64,20 @@ class RolloverService:
         
         total_rollover = Decimal("0.00")
         
-        for goal in goals:
+        category_ids = set(goals_by_category.keys()) | set(rollover_by_category.keys())
+        for category_id in category_ids:
+            goal = goals_by_category.get(category_id)
             # Calculate effective budget
-            if goal.goal_type == "percentage":
+            if goal and goal.goal_type == "percentage":
                 budget = (goal.goal_value / 100) * closed_cycle.income_amount
-            else:
+            elif goal:
                 budget = goal.goal_value
-            effective_budget = budget + goal.rollover_balance
+            else:
+                budget = Decimal("0.00")
+            effective_budget = budget + rollover_by_category.get(category_id, Decimal("0.00"))
             
             # Calculate unused amount
-            spent = spending_by_category.get(goal.category_id, Decimal("0.00"))
+            spent = spending_by_category.get(category_id, Decimal("0.00"))
             unused = max(Decimal("0.00"), effective_budget - spent)
             total_rollover += unused
             
@@ -71,9 +85,8 @@ class RolloverService:
             if next_cycle and unused > 0:
                 await self._apply_rollover_to_next_cycle(
                     next_cycle=next_cycle,
-                    category_id=goal.category_id,
+                    category_id=category_id,
                     rollover_amount=unused,
-                    original_goal=goal,
                 )
         
         # Update the closed cycle's rollover amount for record keeping
@@ -97,25 +110,15 @@ class RolloverService:
             await self.db.flush()
             return Decimal("0.00")
 
-        result = await self.db.execute(
-            select(CategoryGoal)
-            .options(selectinload(CategoryGoal.category))
-            .where(CategoryGoal.pay_cycle_id == closed_cycle.id)
-        )
-        current_goals = list(result.scalars().all())
-        goals_by_category = {goal.category_id: goal for goal in current_goals}
-
         total_rollover = Decimal("0.00")
         for category_id, rollover_amount in category_allocations.items():
             if rollover_amount <= 0:
                 continue
-            original_goal = goals_by_category.get(category_id)
             total_rollover += rollover_amount
             await self._apply_rollover_to_next_cycle(
                 next_cycle=next_cycle,
                 category_id=category_id,
                 rollover_amount=rollover_amount,
-                original_goal=original_goal,
             )
 
         closed_cycle.rollover_amount = total_rollover
@@ -142,36 +145,30 @@ class RolloverService:
         next_cycle: PayCycle,
         category_id: str,
         rollover_amount: Decimal,
-        original_goal: Optional[CategoryGoal] = None,
-    ) -> CategoryGoal:
-        """Apply rollover amount to the corresponding goal in the next cycle."""
-        # Check if goal already exists for this category in next cycle
+    ) -> CategoryRollover:
+        """Apply rollover amount to the corresponding category rollover in the next cycle."""
         result = await self.db.execute(
-            select(CategoryGoal).where(
+            select(CategoryRollover).where(
                 and_(
-                    CategoryGoal.pay_cycle_id == next_cycle.id,
-                    CategoryGoal.category_id == category_id,
+                    CategoryRollover.pay_cycle_id == next_cycle.id,
+                    CategoryRollover.category_id == category_id,
                 )
             )
         )
-        next_goal = result.scalar_one_or_none()
+        next_rollover = result.scalar_one_or_none()
         
-        if next_goal:
-            # Add rollover to existing goal
-            next_goal.rollover_balance += rollover_amount
+        if next_rollover:
+            next_rollover.rollover_balance += rollover_amount
         else:
-            # Create new goal with rollover
-            next_goal = CategoryGoal(
+            next_rollover = CategoryRollover(
                 category_id=category_id,
                 pay_cycle_id=next_cycle.id,
-                goal_type=original_goal.goal_type if original_goal else "fixed",
-                goal_value=original_goal.goal_value if original_goal else Decimal("0.00"),
                 rollover_balance=rollover_amount,
             )
-            self.db.add(next_goal)
+            self.db.add(next_rollover)
         
         await self.db.flush()
-        return next_goal
+        return next_rollover
     
     async def calculate_potential_rollover(
         self, 
@@ -194,10 +191,19 @@ class RolloverService:
         # Get goals
         result = await self.db.execute(
             select(CategoryGoal)
-            .options(selectinload(CategoryGoal.category))
-            .where(CategoryGoal.pay_cycle_id == pay_cycle_id)
+            .join(Category)
+            .where(Category.user_id == user_id)
         )
         goals = list(result.scalars().all())
+        goals_by_category = {goal.category_id: goal for goal in goals}
+
+        rollover_result = await self.db.execute(
+            select(CategoryRollover).where(CategoryRollover.pay_cycle_id == pay_cycle_id)
+        )
+        rollover_by_category = {
+            rollover.category_id: rollover.rollover_balance
+            for rollover in rollover_result.scalars().all()
+        }
         
         # Get spending
         result = await self.db.execute(
@@ -220,18 +226,30 @@ class RolloverService:
         rollovers = {}
         total = Decimal("0.00")
         
-        for goal in goals:
-            if goal.goal_type == "percentage":
+        category_ids = set(goals_by_category.keys()) | set(rollover_by_category.keys())
+        categories_by_id = {}
+        if category_ids:
+            categories_result = await self.db.execute(
+                select(Category).where(Category.id.in_(category_ids))
+            )
+            categories_by_id = {category.id: category for category in categories_result.scalars().all()}
+
+        for category_id in category_ids:
+            goal = goals_by_category.get(category_id)
+            if goal and goal.goal_type == "percentage":
                 budget = (goal.goal_value / 100) * pay_cycle.income_amount
-            else:
+            elif goal:
                 budget = goal.goal_value
-            effective_budget = budget + goal.rollover_balance
+            else:
+                budget = Decimal("0.00")
+            effective_budget = budget + rollover_by_category.get(category_id, Decimal("0.00"))
             
-            spent = spending_by_category.get(goal.category_id, Decimal("0.00"))
+            spent = spending_by_category.get(category_id, Decimal("0.00"))
             unused = max(Decimal("0.00"), effective_budget - spent)
+            category = categories_by_id.get(category_id)
             
-            rollovers[goal.category_id] = {
-                "category_name": goal.category.name,
+            rollovers[category_id] = {
+                "category_name": category.name if category else "Unknown",
                 "budget": float(effective_budget),
                 "spent": float(spent),
                 "potential_rollover": float(unused),

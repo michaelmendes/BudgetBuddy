@@ -1,4 +1,4 @@
-import { format, differenceInDays, parseISO } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import {
   ArrowUpRight,
   ArrowDownRight,
@@ -7,6 +7,7 @@ import {
   DollarSign,
   PiggyBank,
   Plus,
+  Users,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,67 +15,33 @@ import { ProgressRing } from '@/components/ProgressRing';
 import { NudgeList } from '@/components/NudgeCard';
 import { CategoryProgressCard } from '@/components/CategoryProgressCard';
 import { PayCycleTimeline } from '@/components/PayCycleTimeline';
-import { GamificationStats, StreakBadge } from '@/components/GamificationStats';
 import { cn } from '@/lib/utils';
-import { formatCurrency, parseDecimal, calculatePercentage } from '@/lib/decimal';
-import {
-  useActivePayCycle,
-  usePayCycles,
-  useCategories,
-  useCategoryGoals,
-  useCategoryTotals,
-  useTransactionTotals,
-  useUserStats,
-  useNudges,
-} from '@/hooks/useApi';
+import { formatCurrency, formatPercentage, parseDecimal } from '@/lib/decimal';
+import { useDashboard } from '@/hooks/useApi';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Link, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export default function DashboardPage() {
   const [showAllCategories, setShowAllCategories] = useState(false);
+  const [dismissedNudgeIds, setDismissedNudgeIds] = useState<string[]>([]);
   const navigate = useNavigate();
-  const { data: activeCycle, isLoading: cycleLoading } = useActivePayCycle();
-  const { data: allCycles } = usePayCycles();
-  const { data: categories } = useCategories();
-  const { data: categoryGoals } = useCategoryGoals(activeCycle?.id);
-  const { data: categoryTotals } = useCategoryTotals(activeCycle?.id);
-  const { data: totals } = useTransactionTotals(activeCycle?.id);
-  const { data: userStats } = useUserStats();
-  const { data: nudges } = useNudges();
+  const { data: dashboard, isLoading } = useDashboard();
 
-  // Calculate overall stats
-  const income = activeCycle ? parseDecimal(activeCycle.income_amount) : 0;
-  const rollover = activeCycle ? parseDecimal(activeCycle.rollover_amount) : 0;
-  const totalBudget = income + rollover;
-  const totalSpent = totals?.expense || 0;
-  const totalIncome = totals?.income || 0;
-  const remaining = totalBudget - totalSpent + totalIncome;
-  const budgetUsedPercentage = totalBudget > 0 ? calculatePercentage(totalSpent, totalBudget) : 0;
-
-  // Calculate days remaining
-  const daysRemaining = activeCycle
-    ? differenceInDays(parseISO(activeCycle.end_date), new Date())
-    : 0;
-  const totalDays = activeCycle
-    ? differenceInDays(parseISO(activeCycle.end_date), parseISO(activeCycle.start_date)) + 1
-    : 1;
-  const dayProgress = ((totalDays - daysRemaining) / totalDays) * 100;
-
-  // Get category progress data
-  const categoryProgress = categories?.map((cat) => {
-    const goal = categoryGoals?.find((g) => g.category_id === cat.id);
-    const spent = categoryTotals?.[cat.id] || 0;
-    return { category: cat, goal, spent };
-  }) || [];
+  const activeCycle = dashboard?.active_pay_cycle ?? null;
+  const stats = dashboard?.stats ?? null;
+  const categoryProgress = dashboard?.category_progress ?? [];
   const visibleCategoryProgress = showAllCategories ? categoryProgress : categoryProgress.slice(0, 6);
+  const friendUpdates = dashboard?.friend_updates ?? [];
+  const recentCycles = dashboard?.recent_cycles ?? [];
+  const visibleNudges = (dashboard?.nudges ?? []).filter((nudge) => !dismissedNudgeIds.includes(nudge.id));
 
-  if (cycleLoading) {
+  useEffect(() => {
+    setDismissedNudgeIds([]);
+  }, [activeCycle?.id]);
+
+  if (isLoading) {
     return <DashboardSkeleton />;
-  }
-
-  if (!activeCycle) {
-    return <NoCycleState />;
   }
 
   return (
@@ -83,128 +50,154 @@ export default function DashboardPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-muted-foreground">
-            {format(parseISO(activeCycle.start_date), 'MMM d')} –{' '}
-            {format(parseISO(activeCycle.end_date), 'MMM d, yyyy')}
-          </p>
+          {activeCycle ? (
+            <p className="text-muted-foreground">
+              {format(parseISO(activeCycle.start_date), 'MMM d')} –{' '}
+              {format(parseISO(activeCycle.end_date), 'MMM d, yyyy')}
+            </p>
+          ) : (
+            <p className="text-muted-foreground">No active pay cycle</p>
+          )}
         </div>
-        <div className="flex items-center gap-3">
-          <StreakBadge streak={userStats?.current_streak ?? 0} />
-          <Button asChild>
-            <Link to="/transactions/new">
-              <Plus className="mr-2 h-4 w-4" />
-              Add Transaction
-            </Link>
-          </Button>
-        </div>
+        {activeCycle && (
+          <div className="flex items-center gap-3">
+            <Button asChild>
+              <Link to="/transactions/new">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Transaction
+              </Link>
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Nudges */}
-      <NudgeList nudges={nudges ?? []} />
+      <NudgeList
+        nudges={visibleNudges}
+        onDismiss={(id) => setDismissedNudgeIds((current) => [...current, id])}
+      />
 
-      {/* Main Stats Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Budget Used"
-          value={formatCurrency(totalSpent)}
-          subtitle={`of ${formatCurrency(totalBudget)}`}
-          icon={DollarSign}
-          trend={budgetUsedPercentage > 100 ? 'negative' : budgetUsedPercentage > 80 ? 'warning' : 'positive'}
-          trendValue={`${Math.round(budgetUsedPercentage)}%`}
-        />
-        <StatCard
-          title="Remaining"
-          value={formatCurrency(remaining)}
-          subtitle="available to spend"
-          icon={PiggyBank}
-          trend={remaining > 0 ? 'positive' : 'negative'}
-        />
-        <StatCard
-          title="Days Left"
-          value={daysRemaining.toString()}
-          subtitle={`of ${totalDays} days`}
-          icon={Calendar}
-          progress={dayProgress}
-        />
-        <StatCard
-          title="Extra Income"
-          value={formatCurrency(totalIncome)}
-          subtitle="this cycle"
-          icon={TrendingUp}
-          trend="positive"
-        />
-      </div>
+      {!activeCycle ? (
+        <NoCycleState friendUpdates={friendUpdates} />
+      ) : (
+        <>
+          {/* Main Stats Grid */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              title="Budget Used"
+              value={formatCurrency(stats?.total_spent)}
+              subtitle={`of ${formatCurrency(stats?.total_budget)}`}
+              icon={DollarSign}
+              trend={
+                (stats?.budget_used_percentage ?? 0) > 100
+                  ? 'negative'
+                  : (stats?.budget_used_percentage ?? 0) > 80
+                  ? 'warning'
+                  : 'positive'
+              }
+              trendValue={formatPercentage(stats?.budget_used_percentage, 0)}
+            />
+            <StatCard
+              title="Remaining"
+              value={formatCurrency(stats?.remaining)}
+              subtitle="available to spend"
+              icon={PiggyBank}
+              trend={parseDecimal(stats?.remaining) > 0 ? 'positive' : 'negative'}
+            />
+            <StatCard
+              title="Days Left"
+              value={String(stats?.days_remaining ?? 0)}
+              subtitle={`of ${stats?.total_days ?? 0} days`}
+              icon={Calendar}
+              progress={stats?.day_progress_percentage}
+            />
+            <StatCard
+              title="Extra Income"
+              value={formatCurrency(stats?.extra_income)}
+              subtitle="this cycle"
+              icon={TrendingUp}
+              trend="positive"
+            />
+          </div>
 
-      {/* Main Content Grid */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Budget Overview */}
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Budget Overview</CardTitle>
-              <CardDescription>Track spending across categories</CardDescription>
-            </div>
-            <ProgressRing value={budgetUsedPercentage} size="lg" label="spent" />
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {visibleCategoryProgress.map(({ category, goal, spent }) => (
-                <CategoryProgressCard
-                  key={category.id}
-                  category={category}
-                  goal={goal}
-                  spent={spent}
-                  cycleIncome={income}
-                />
-              ))}
-            </div>
-            {categoryProgress.length > 6 && (
-              <Button
-                variant="ghost"
-                className="w-full mt-4"
-                onClick={() => setShowAllCategories((current) => !current)}
-              >
-                {showAllCategories ? 'Show fewer categories' : 'View all categories'}
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Gamification & Timeline */}
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Your Progress</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {userStats ? (
-                <GamificationStats stats={userStats} />
-              ) : (
-                <p className="text-sm text-muted-foreground">No progress stats available yet.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {allCycles && allCycles.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>History</CardTitle>
+          {/* Main Content Grid */}
+          <div className="grid gap-6 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Budget Overview</CardTitle>
+                  <CardDescription>Track spending across categories</CardDescription>
+                </div>
+                <ProgressRing value={stats?.budget_used_percentage ?? 0} size="lg" label="spent" />
               </CardHeader>
               <CardContent>
-                <PayCycleTimeline
-                  cycles={allCycles.slice(0, 5)}
-                  activeCycleId={activeCycle?.id}
-                  onCycleClick={(cycle) => {
-                    if (cycle.status === 'closed') {
-                      navigate(`/cycles/${cycle.id}/summary`);
-                    }
-                  }}
-                />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {visibleCategoryProgress.map((progress) => (
+                    <CategoryProgressCard key={progress.category_id} progress={progress} />
+                  ))}
+                </div>
+                {categoryProgress.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Add category goals or transactions to see progress here.
+                  </p>
+                )}
+                {categoryProgress.length > 6 && (
+                  <Button
+                    variant="ghost"
+                    className="w-full mt-4"
+                    onClick={() => setShowAllCategories((current) => !current)}
+                  >
+                    {showAllCategories ? 'Show fewer categories' : 'View all categories'}
+                  </Button>
+                )}
               </CardContent>
             </Card>
-          )}
+
+            <div className="space-y-6">
+              <FriendUpdatesCard friendUpdates={friendUpdates} />
+              {recentCycles.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>History</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <PayCycleTimeline
+                      cycles={recentCycles}
+                      activeCycleId={activeCycle.id}
+                      onCycleClick={(cycle) => {
+                        if (cycle.status === 'closed') {
+                          navigate(`/cycles/${cycle.id}/summary`);
+                        }
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {!activeCycle && recentCycles.length > 0 && (
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2" />
+          <Card>
+            <CardHeader>
+              <CardTitle>History</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PayCycleTimeline
+                cycles={recentCycles}
+                onCycleClick={(cycle) => {
+                  if (cycle.status === 'closed') {
+                    navigate(`/cycles/${cycle.id}/summary`);
+                  }
+                }}
+              />
+            </CardContent>
+          </Card>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -288,22 +281,88 @@ function DashboardSkeleton() {
   );
 }
 
-function NoCycleState() {
+function NoCycleState({ friendUpdates }: { friendUpdates: import('@/types/api').FriendProgress[] }) {
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
-      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 mb-6">
-        <Calendar className="h-10 w-10 text-primary" />
+    <div className="grid gap-6 lg:grid-cols-3">
+      <div className="flex min-h-[60vh] flex-col items-center justify-center text-center lg:col-span-2">
+        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 mb-6">
+          <Calendar className="h-10 w-10 text-primary" />
+        </div>
+        <h2 className="text-2xl font-bold text-foreground mb-2">No Active Pay Cycle</h2>
+        <p className="text-muted-foreground mb-6 max-w-md">
+          Create a new pay cycle to start tracking your budget and expenses.
+        </p>
+        <Button size="lg" asChild>
+          <Link to="/cycles/new">
+            <Plus className="mr-2 h-5 w-5" />
+            Create Pay Cycle
+          </Link>
+        </Button>
       </div>
-      <h2 className="text-2xl font-bold text-foreground mb-2">No Active Pay Cycle</h2>
-      <p className="text-muted-foreground mb-6 max-w-md">
-        Create a new pay cycle to start tracking your budget and expenses.
-      </p>
-      <Button size="lg" asChild>
-        <Link to="/cycles/new">
-          <Plus className="mr-2 h-5 w-5" />
-          Create Pay Cycle
-        </Link>
-      </Button>
+      <FriendUpdatesCard friendUpdates={friendUpdates} />
     </div>
+  );
+}
+
+function FriendUpdatesCard({ friendUpdates }: { friendUpdates: import('@/types/api').FriendProgress[] }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Friend Updates</CardTitle>
+        <CardDescription>Shared progress only, never raw amounts</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {friendUpdates.length === 0 ? (
+          <div className="rounded-lg border border-dashed p-6 text-center">
+            <Users className="mx-auto h-8 w-8 text-muted-foreground" />
+            <p className="mt-3 text-sm text-muted-foreground">
+              Add friends to see their shared budget progress here.
+            </p>
+          </div>
+        ) : (
+          friendUpdates.slice(0, 3).map((friend) => (
+            <div key={friend.friend_id} className="rounded-lg border p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-medium text-foreground">{friend.friend_display_name}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {friend.categories_on_track} on track, {friend.categories_over_budget} over budget
+                  </p>
+                </div>
+                <ProgressRing
+                  value={friend.overall_budget_used_percentage}
+                  size="sm"
+                  label={formatPercentage(friend.overall_budget_used_percentage, 0)}
+                />
+              </div>
+              <div className="mt-4 space-y-2">
+                {friend.shared_categories.slice(0, 3).map((category) => (
+                  <div key={category.category_id} className="flex items-center justify-between gap-3 text-sm">
+                    <div className="min-w-0">
+                      <span className="mr-2" role="img" aria-label={category.category_name}>
+                        {category.category_icon || '📁'}
+                      </span>
+                      <span className="truncate text-foreground">{category.category_name}</span>
+                    </div>
+                    <span
+                      className={cn(
+                        'shrink-0 font-medium',
+                        category.is_over_budget
+                          ? 'text-destructive'
+                          : category.is_on_track
+                          ? 'text-success'
+                          : 'text-warning'
+                      )}
+                    >
+                      {formatPercentage(category.completion_percentage, 0)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+      </CardContent>
+    </Card>
   );
 }

@@ -65,9 +65,9 @@ export default function AppLayout() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex h-screen overflow-hidden bg-background">
       {/* Desktop Sidebar */}
-      <aside className="hidden w-64 flex-shrink-0 border-r border-sidebar-border bg-sidebar lg:block">
+      <aside className="sticky top-0 hidden h-screen w-64 flex-shrink-0 border-r border-sidebar-border bg-sidebar lg:block">
         <div className="flex h-full flex-col">
           <div className="flex h-16 items-center gap-2 border-b border-sidebar-border px-6">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
@@ -108,7 +108,7 @@ export default function AppLayout() {
       </aside>
 
       {/* Mobile Header */}
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b bg-background px-4 lg:hidden">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
@@ -158,7 +158,7 @@ export default function AppLayout() {
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="min-h-0 flex-1 overflow-y-auto">
           <div className="container py-6">
             <Outlet />
           </div>

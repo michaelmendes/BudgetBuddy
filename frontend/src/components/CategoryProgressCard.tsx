@@ -1,36 +1,26 @@
 import { cn } from '@/lib/utils';
-import { formatCurrency, parseDecimal, calculatePercentage } from '@/lib/decimal';
+import { formatCurrency, parseDecimal } from '@/lib/decimal';
 import { ProgressRing } from './ProgressRing';
-import type { Category, CategoryGoal } from '@/types/api';
+import type { DashboardCategoryProgress } from '@/types/api';
 
 interface CategoryProgressCardProps {
-  category: Category;
-  goal?: CategoryGoal;
-  spent: number;
-  cycleIncome?: number;
+  progress: DashboardCategoryProgress;
   className?: string;
 }
 
 export function CategoryProgressCard({
-  category,
-  goal,
-  spent,
-  cycleIncome = 0,
+  progress,
   className,
 }: CategoryProgressCardProps) {
-  const budget = goal
-    ? goal.goal_type === 'percentage'
-      ? (parseDecimal(goal.goal_value) / 100) * cycleIncome
-      : parseDecimal(goal.goal_value)
-    : 0;
-  const rollover = goal ? parseDecimal(goal.rollover_balance) : 0;
-  const totalBudget = budget + rollover;
-  const percentage = totalBudget > 0 ? calculatePercentage(spent, totalBudget) : 0;
-  const remaining = Math.max(totalBudget - spent, 0);
-  const isOverBudget = spent > totalBudget;
+  const spent = parseDecimal(progress.spent);
+  const totalBudget = parseDecimal(progress.effective_budget);
+  const remaining = Math.max(parseDecimal(progress.remaining), 0);
+  const rollover = parseDecimal(progress.rollover_amount);
+  const percentage = progress.completion_percentage;
+  const isOverBudget = progress.is_over_budget;
 
   // Get icon and color from category
-  const iconEmoji = category.icon || '📁';
+  const iconEmoji = progress.category_icon || '📁';
   
   return (
     <div
@@ -42,11 +32,11 @@ export function CategoryProgressCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <span className="text-2xl" role="img" aria-label={category.name}>
+          <span className="text-2xl" role="img" aria-label={progress.category_name}>
             {iconEmoji}
           </span>
           <div className="min-w-0">
-            <h4 className="font-medium text-foreground truncate">{category.name}</h4>
+            <h4 className="font-medium text-foreground truncate">{progress.category_name}</h4>
             <p className="text-sm text-muted-foreground">
               {formatCurrency(spent)} / {formatCurrency(totalBudget)}
             </p>
@@ -77,7 +67,7 @@ export function CategoryProgressCard({
         <span className="text-muted-foreground">
           {isOverBudget ? 'Over by' : 'Remaining'}: {' '}
           <span className={cn('font-medium', isOverBudget ? 'text-destructive' : 'text-foreground')}>
-            {formatCurrency(isOverBudget ? spent - totalBudget : remaining)}
+            {formatCurrency(isOverBudget ? Math.abs(parseDecimal(progress.remaining)) : remaining)}
           </span>
         </span>
         {rollover > 0 && (

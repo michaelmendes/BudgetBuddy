@@ -26,6 +26,7 @@ import PayCyclePage from "@/pages/PayCycle";
 import PayCycleReviewPage from "@/pages/PayCycleReview";
 import PayCycleClosePage from "@/pages/PayCycleClose";
 import SetupCategoriesPage from "@/pages/SetupCategories";
+import SetupGoalAmountsPage from "@/pages/SetupGoalAmounts";
 import StartingAmountsPage from "@/pages/StartingAmounts";
 
 import NotFound from "./pages/NotFound";
@@ -74,6 +75,7 @@ const App = () => (
               <Route path="/cycles/:id/review" element={<PayCycleReviewPage />} />
               <Route path="/cycles/:id/summary" element={<CycleSummaryPage />} />
               <Route path="/setup/categories" element={<SetupCategoriesPage />} />
+              <Route path="/setup/goal-amounts" element={<SetupGoalAmountsPage />} />
               <Route path="/setup/starting-amounts" element={<StartingAmountsPage />} />
             </Route>
 

@@ -142,7 +142,6 @@ async def seed_database():
             goal = CategoryGoal(
                 id=str(uuid.uuid4()),
                 category_id=cat_id,
-                pay_cycle_id=pay_cycle.id,
                 goal_type=goal_type,
                 goal_value=goal_value,
             )

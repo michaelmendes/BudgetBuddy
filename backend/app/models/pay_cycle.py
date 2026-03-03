@@ -13,7 +13,7 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.models.user import User
     from app.models.transaction import Transaction
-    from app.models.category_goal import CategoryGoal
+    from app.models.category_rollover import CategoryRollover
     from app.models.pay_cycle_summary import PayCycleSummary
 
 
@@ -52,8 +52,8 @@ class PayCycle(Base):
     transactions: Mapped[List["Transaction"]] = relationship(
         "Transaction", back_populates="pay_cycle", cascade="all, delete-orphan"
     )
-    category_goals: Mapped[List["CategoryGoal"]] = relationship(
-        "CategoryGoal", back_populates="pay_cycle", cascade="all, delete-orphan"
+    category_rollovers: Mapped[List["CategoryRollover"]] = relationship(
+        "CategoryRollover", back_populates="pay_cycle", cascade="all, delete-orphan"
     )
     summary: Mapped[Optional["PayCycleSummary"]] = relationship(
         "PayCycleSummary", back_populates="pay_cycle", uselist=False, cascade="all, delete-orphan"

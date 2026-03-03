@@ -56,8 +56,8 @@ export default function SetupCategoriesPage() {
     <div className="mx-auto max-w-3xl space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Setup Wizard: Categories</CardTitle>
-          <CardDescription>Step 1 of 2. Add the spending categories you want to track.</CardDescription>
+          <CardTitle>Setup: Categories</CardTitle>
+          <CardDescription>Step 1 of 3. Add the spending and saving categories you want to track.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
@@ -119,8 +119,8 @@ export default function SetupCategoriesPage() {
       </Card>
 
       <div className="flex justify-end">
-        <Button onClick={() => navigate('/setup/starting-amounts')} disabled={!categories?.length}>
-          Continue to Starting Amounts
+        <Button onClick={() => navigate('/setup/goal-amounts')} disabled={!categories?.length}>
+          Continue to Goal Amounts
         </Button>
       </div>
     </div>

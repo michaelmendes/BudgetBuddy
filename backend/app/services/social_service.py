@@ -13,6 +13,7 @@ from app.models.friendship import Friendship
 from app.models.pay_cycle import PayCycle
 from app.models.category import Category
 from app.models.category_goal import CategoryGoal
+from app.models.category_rollover import CategoryRollover
 from app.models.transaction import Transaction
 from app.schemas.social import FriendProgress, SharedCategoryProgress, LeaderboardEntry
 from app.core.exceptions import ForbiddenException, NotFoundException
@@ -85,12 +86,24 @@ class SocialService:
         result = await self.db.execute(
             select(CategoryGoal).where(
                 and_(
-                    CategoryGoal.pay_cycle_id == pay_cycle.id,
                     CategoryGoal.category_id.in_(shared_category_ids),
                 )
             )
         )
         goals = {g.category_id: g for g in result.scalars().all()}
+
+        rollover_result = await self.db.execute(
+            select(CategoryRollover).where(
+                and_(
+                    CategoryRollover.pay_cycle_id == pay_cycle.id,
+                    CategoryRollover.category_id.in_(shared_category_ids),
+                )
+            )
+        )
+        rollovers = {
+            rollover.category_id: rollover.rollover_balance
+            for rollover in rollover_result.scalars().all()
+        }
         
         # Get spending for shared categories
         result = await self.db.execute(
@@ -120,15 +133,14 @@ class SocialService:
         for category in shared_categories:
             goal = goals.get(category.id)
             spent = spending_by_category.get(category.id, Decimal("0.00"))
+            effective_budget = rollovers.get(category.id, Decimal("0.00"))
             
             if goal:
                 if goal.goal_type == "percentage":
                     budget = (goal.goal_value / 100) * pay_cycle.income_amount
                 else:
                     budget = goal.goal_value
-                effective_budget = budget + goal.rollover_balance
-            else:
-                effective_budget = Decimal("0.00")
+                effective_budget += budget
             
             total_budget += effective_budget
             total_spent += spent

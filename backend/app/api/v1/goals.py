@@ -2,7 +2,6 @@
 Goal endpoints (category goals and long-term goals).
 """
 from typing import List, Optional
-from decimal import Decimal
 from fastapi import APIRouter, Query
 
 from app.api.v1.deps import DbSession, CurrentUser
@@ -29,11 +28,11 @@ router = APIRouter()
 async def list_category_goals(
     current_user: CurrentUser,
     db: DbSession,
-    pay_cycle_id: str = Query(...),
+    pay_cycle_id: Optional[str] = Query(None),
 ):
-    """List all category goals for a pay cycle with progress."""
+    """List category goals, optionally with pay cycle progress details."""
     service = GoalService(db)
-    return await service.list_goals_for_cycle(pay_cycle_id, current_user.id)
+    return await service.list_goals_for_cycle(current_user.id, pay_cycle_id)
 
 
 @router.post("/category", response_model=CategoryGoalResponse, status_code=201)
@@ -83,24 +82,6 @@ async def delete_category_goal(
     """Delete a category goal."""
     service = GoalService(db)
     await service.delete_category_goal(goal_id, current_user.id)
-
-
-@router.post("/category/copy")
-async def copy_goals_to_cycle(
-    current_user: CurrentUser,
-    db: DbSession,
-    source_cycle_id: str = Query(...),
-    target_cycle_id: str = Query(...),
-):
-    """Copy category goals from one pay cycle to another."""
-    service = GoalService(db)
-    created = await service.copy_goals_to_cycle(
-        source_cycle_id, 
-        target_cycle_id, 
-        current_user.id
-    )
-    return {"copied_count": len(created)}
-
 
 # ==================== Long-Term Goals ====================
 

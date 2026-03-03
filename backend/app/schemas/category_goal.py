@@ -24,7 +24,7 @@ class CategoryGoalBase(BaseModel):
 
 class CategoryGoalCreate(CategoryGoalBase):
     """Schema for creating a category goal."""
-    pay_cycle_id: str
+    pass
 
 
 class CategoryGoalUpdate(BaseModel):
@@ -36,20 +36,17 @@ class CategoryGoalUpdate(BaseModel):
 class CategoryGoalResponse(CategoryGoalBase):
     """Schema for category goal response."""
     id: str
-    pay_cycle_id: str
-    rollover_balance: Decimal
     created_at: datetime
     
     # Computed fields
     effective_budget: Optional[Decimal] = None
-    
-    class Config:
-        from_attributes = True
-
-
-class CategoryGoalProgress(CategoryGoalResponse):
-    """Category goal with progress information."""
+    rollover_balance: Decimal = Decimal("0.00")
     spent: Decimal = Decimal("0.00")
     remaining: Decimal = Decimal("0.00")
     completion_percentage: float = 0.0
     is_over_budget: bool = False
+    
+    class Config:
+        from_attributes = True
+class CategoryGoalProgress(CategoryGoalResponse):
+    """Category goal with cycle-specific progress information."""

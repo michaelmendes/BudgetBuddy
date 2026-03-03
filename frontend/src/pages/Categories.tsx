@@ -35,8 +35,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { formatCurrency, isValidDecimal, parseDecimal } from '@/lib/decimal';
 import {
-  useActivePayCycle,
-  usePayCycles,
   useCategoryGoals,
   useCategories,
   useCreateCategory,
@@ -81,13 +79,8 @@ export default function CategoriesPage() {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
 
   const { toast } = useToast();
-  const { data: activeCycle } = useActivePayCycle();
-  const { data: payCycles } = usePayCycles();
-  const targetCycle = activeCycle ?? payCycles?.find((cycle) => cycle.status === 'upcoming');
-  const targetCycleId = targetCycle?.id;
-
   const { data: categories, isLoading } = useCategories();
-  const { data: categoryGoals } = useCategoryGoals(targetCycleId);
+  const { data: categoryGoals } = useCategoryGoals(undefined);
   const createCategory = useCreateCategory();
   const updateCategory = useUpdateCategory();
   const deleteCategory = useDeleteCategory();
@@ -145,22 +138,12 @@ export default function CategoriesPage() {
   };
 
   const handleSubmit = async (values: CategoryFormValues) => {
-    if (!targetCycleId) {
-      toast({
-        title: 'No editable pay cycle',
-        description: 'Create or activate a pay cycle before setting category allocations.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     try {
       const data = {
         name: values.name,
         icon: values.icon,
         color: values.color,
         is_shared: values.is_shared,
-        pay_cycle_id: targetCycleId,
         allocation_type: values.allocation_type,
         allocation_value: values.allocation_value,
       };

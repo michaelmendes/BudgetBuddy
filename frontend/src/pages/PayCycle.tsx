@@ -10,7 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { usePayCycles } from '@/hooks/useApi';
 import api from '@/lib/api';
 import { formatCurrency, parseDecimal } from '@/lib/decimal';
-import type { CategoryGoal, PayCycle } from '@/types/api';
+import type { CategoryGoal, GoalCompletion, PayCycle } from '@/types/api';
 import { cn } from '@/lib/utils';
 
 type CycleOverview = {
@@ -45,7 +45,7 @@ export default function PayCyclePage() {
           : parseDecimal(cycle.income_amount) - (totals.expense || 0);
 
         if (summary?.goal_completion) {
-          const values = Object.values(summary.goal_completion);
+          const values = Object.values(summary.goal_completion) as GoalCompletion[];
           const goalsHit = values.filter((goal) => goal.met).length;
           return {
             totalSpent,

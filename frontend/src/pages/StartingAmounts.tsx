@@ -90,9 +90,9 @@ export default function StartingAmountsPage() {
     <div className="mx-auto max-w-3xl space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Setup Wizard: Starting Amounts</CardTitle>
+          <CardTitle>Setup: Starting Amounts</CardTitle>
           <CardDescription>
-            Step 2 of 2. Set the starting amount for each category. These are used as initial balances for your first pay cycle.
+            Step 3 of 3. Set the starting amount for each category. These are used as initial balances for your first pay cycle.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -125,7 +125,7 @@ export default function StartingAmountsPage() {
       </Card>
 
       <div className="flex justify-between">
-        <Button variant="outline" onClick={() => navigate('/setup/categories')}>
+        <Button variant="outline" onClick={() => navigate('/setup/goal-amounts')}>
           Back
         </Button>
         <Button

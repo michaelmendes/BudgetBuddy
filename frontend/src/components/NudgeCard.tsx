@@ -1,10 +1,12 @@
 import { AlertCircle, PartyPopper, Lightbulb, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Nudge } from '@/types/api';
+import type { DashboardNudge, Nudge } from '@/types/api';
 import { useState } from 'react';
 
+type NudgeLike = Nudge | DashboardNudge;
+
 interface NudgeCardProps {
-  nudge: Nudge;
+  nudge: NudgeLike;
   onDismiss?: (id: string) => void;
 }
 
@@ -67,7 +69,7 @@ export function NudgeCard({ nudge, onDismiss }: NudgeCardProps) {
 }
 
 interface NudgeListProps {
-  nudges: Nudge[];
+  nudges: NudgeLike[];
   maxVisible?: number;
   onDismiss?: (id: string) => void;
 }

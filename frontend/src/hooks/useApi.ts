@@ -24,11 +24,17 @@ import type {
   Friendship,
   FriendProgress,
   LeaderboardEntry,
+  DashboardData,
   UserStats,
-  Nudge,
-  StartingAmountItem,
   StartingAmountSaveRequest,
 } from '@/types/api';
+
+export function useDashboard() {
+  return useQuery<DashboardData>({
+    queryKey: ['dashboard'],
+    queryFn: () => api.getDashboard(),
+  });
+}
 
 // PayCycle hooks
 export function usePayCycles() {
@@ -66,6 +72,7 @@ export function useCreatePayCycle() {
   return useMutation({
     mutationFn: (data: PayCycleCreate) => api.createPayCycle(data),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['payCycles'] });
       queryClient.invalidateQueries({ queryKey: ['payCycle', 'active'] });
     },
@@ -78,6 +85,7 @@ export function useUpdatePayCycle() {
     mutationFn: ({ id, data }: { id: string; data: PayCycleUpdate }) =>
       api.updatePayCycle(id, data),
     onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['payCycles'] });
       queryClient.invalidateQueries({ queryKey: ['payCycle', id] });
       queryClient.invalidateQueries({ queryKey: ['payCycle', 'active'] });
@@ -91,10 +99,15 @@ export function useClosePayCycle() {
     mutationFn: ({ id, data }: { id: string; data?: PayCycleCloseRequest }) => api.closePayCycle(id, data),
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['payCycles'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['payCycleOverview'] });
       queryClient.invalidateQueries({ queryKey: ['payCycle', id] });
       queryClient.invalidateQueries({ queryKey: ['payCycle', 'active'] });
       queryClient.invalidateQueries({ queryKey: ['payCycleSummary', id] });
       queryClient.invalidateQueries({ queryKey: ['categoryGoals'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['transactionTotals'] });
+      queryClient.invalidateQueries({ queryKey: ['categoryTotals'] });
     },
   });
 }
@@ -111,11 +124,10 @@ export function useCreateCategory() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CategoryCreate) => api.createCategory(data),
-    onSuccess: (_, data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
-      if (data.pay_cycle_id) {
-        queryClient.invalidateQueries({ queryKey: ['categoryGoals', data.pay_cycle_id] });
-      }
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['categoryGoals'] });
     },
   });
 }
@@ -125,13 +137,10 @@ export function useUpdateCategory() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: CategoryUpdate }) =>
       api.updateCategory(id, data),
-    onSuccess: (_, { data }) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
-      if (data.pay_cycle_id) {
-        queryClient.invalidateQueries({ queryKey: ['categoryGoals', data.pay_cycle_id] });
-      } else {
-        queryClient.invalidateQueries({ queryKey: ['categoryGoals'] });
-      }
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['categoryGoals'] });
     },
   });
 }
@@ -142,6 +151,7 @@ export function useDeleteCategory() {
     mutationFn: (id: string) => api.deleteCategory(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 }
@@ -150,8 +160,7 @@ export function useDeleteCategory() {
 export function useCategoryGoals(payCycleId: string | undefined) {
   return useQuery({
     queryKey: ['categoryGoals', payCycleId],
-    queryFn: () => api.getCategoryGoals(payCycleId!),
-    enabled: !!payCycleId,
+    queryFn: () => api.getCategoryGoals(payCycleId),
   });
 }
 
@@ -159,8 +168,9 @@ export function useCreateCategoryGoal() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CategoryGoalCreate) => api.createCategoryGoal(data),
-    onSuccess: (_, data) => {
-      queryClient.invalidateQueries({ queryKey: ['categoryGoals', data.pay_cycle_id] });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['categoryGoals'] });
     },
   });
 }
@@ -171,6 +181,7 @@ export function useUpdateCategoryGoal() {
     mutationFn: ({ id, data }: { id: string; data: CategoryGoalUpdate }) =>
       api.updateCategoryGoal(id, data),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['categoryGoals'] });
     },
   });
@@ -206,6 +217,8 @@ export function useCreateTransaction() {
   return useMutation({
     mutationFn: (data: TransactionCreate) => api.createTransaction(data),
     onSuccess: (_, data) => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['payCycleOverview'] });
       queryClient.invalidateQueries({ queryKey: ['transactions', data.pay_cycle_id] });
       queryClient.invalidateQueries({ queryKey: ['categoryTotals', data.pay_cycle_id] });
       queryClient.invalidateQueries({ queryKey: ['transactionTotals', data.pay_cycle_id] });
@@ -220,6 +233,8 @@ export function useUpdateTransaction() {
     mutationFn: ({ id, data }: { id: string; data: TransactionUpdate }) =>
       api.updateTransaction(id, data),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['payCycleOverview'] });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['categoryTotals'] });
       queryClient.invalidateQueries({ queryKey: ['transactionTotals'] });
@@ -232,6 +247,8 @@ export function useDeleteTransaction() {
   return useMutation({
     mutationFn: (id: string) => api.deleteTransaction(id),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['payCycleOverview'] });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['categoryTotals'] });
       queryClient.invalidateQueries({ queryKey: ['transactionTotals'] });
@@ -350,6 +367,7 @@ export function useSendFriendRequest() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['friends'] });
       queryClient.invalidateQueries({ queryKey: ['friendRequests'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 }
@@ -362,6 +380,7 @@ export function useRespondToFriendRequest() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['friends'] });
       queryClient.invalidateQueries({ queryKey: ['friendRequests'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['social'] });
     },
   });
@@ -373,6 +392,7 @@ export function useRemoveFriend() {
     mutationFn: (id: string) => api.removeFriend(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['friends'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['social'] });
     },
   });

@@ -18,7 +18,6 @@ class CategoryBase(BaseModel):
 class CategoryCreate(CategoryBase):
     """Schema for creating a category."""
     sort_order: int = 0
-    pay_cycle_id: Optional[str] = None
     allocation_type: Optional[str] = Field(None, pattern="^(percentage|fixed)$")
     allocation_value: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
 
@@ -26,11 +25,10 @@ class CategoryCreate(CategoryBase):
     def validate_allocation(self):
         has_type = self.allocation_type is not None
         has_value = self.allocation_value is not None
-        has_cycle = self.pay_cycle_id is not None
 
-        if has_type or has_value or has_cycle:
-            if not (has_type and has_value and has_cycle):
-                raise ValueError("pay_cycle_id, allocation_type, and allocation_value must be provided together")
+        if has_type or has_value:
+            if not (has_type and has_value):
+                raise ValueError("allocation_type and allocation_value must be provided together")
             if self.allocation_type == "percentage" and self.allocation_value > 100:
                 raise ValueError("Percentage allocation cannot exceed 100")
         return self
@@ -44,7 +42,6 @@ class CategoryUpdate(BaseModel):
     is_shared: Optional[bool] = None
     is_archived: Optional[bool] = None
     sort_order: Optional[int] = None
-    pay_cycle_id: Optional[str] = None
     allocation_type: Optional[str] = Field(None, pattern="^(percentage|fixed)$")
     allocation_value: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
 
@@ -52,11 +49,10 @@ class CategoryUpdate(BaseModel):
     def validate_allocation(self):
         has_type = self.allocation_type is not None
         has_value = self.allocation_value is not None
-        has_cycle = self.pay_cycle_id is not None
 
-        if has_type or has_value or has_cycle:
-            if not (has_type and has_value and has_cycle):
-                raise ValueError("pay_cycle_id, allocation_type, and allocation_value must be provided together")
+        if has_type or has_value:
+            if not (has_type and has_value):
+                raise ValueError("allocation_type and allocation_value must be provided together")
             if self.allocation_type == "percentage" and self.allocation_value > 100:
                 raise ValueError("Percentage allocation cannot exceed 100")
         return self

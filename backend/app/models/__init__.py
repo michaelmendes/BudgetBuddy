@@ -6,6 +6,7 @@ from app.models.user import User
 from app.models.pay_cycle import PayCycle
 from app.models.category import Category
 from app.models.category_goal import CategoryGoal
+from app.models.category_rollover import CategoryRollover
 from app.models.transaction import Transaction
 from app.models.recurring_transaction import RecurringTransaction
 from app.models.long_term_goal import LongTermGoal
@@ -19,6 +20,7 @@ __all__ = [
     "PayCycle",
     "Category",
     "CategoryGoal",
+    "CategoryRollover",
     "Transaction",
     "RecurringTransaction",
     "LongTermGoal",

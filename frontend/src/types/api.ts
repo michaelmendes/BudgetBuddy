@@ -131,7 +131,6 @@ export interface CategoryCreate {
   icon?: string;
   color?: string;
   is_shared?: boolean;
-  pay_cycle_id?: string;
   allocation_type?: 'percentage' | 'fixed';
   allocation_value?: string;
 }
@@ -141,7 +140,6 @@ export interface CategoryUpdate {
   icon?: string;
   color?: string;
   is_shared?: boolean;
-  pay_cycle_id?: string;
   allocation_type?: 'percentage' | 'fixed';
   allocation_value?: string;
 }
@@ -150,7 +148,6 @@ export interface CategoryUpdate {
 export interface CategoryGoal {
   id: string;
   category_id: string;
-  pay_cycle_id: string;
   goal_type: 'percentage' | 'fixed';
   goal_value: string;
   rollover_balance: string;
@@ -164,7 +161,6 @@ export interface CategoryGoal {
 
 export interface CategoryGoalCreate {
   category_id: string;
-  pay_cycle_id: string;
   goal_type: 'percentage' | 'fixed';
   goal_value: string;
 }
@@ -313,6 +309,33 @@ export interface FriendProgress {
   categories_over_budget: number;
 }
 
+export interface DashboardStats {
+  total_budget: string;
+  total_spent: string;
+  remaining: string;
+  extra_income: string;
+  budget_used_percentage: number;
+  days_remaining: number;
+  total_days: number;
+  day_progress_percentage: number;
+}
+
+export interface DashboardCategoryProgress {
+  category_id: string;
+  category_name: string;
+  category_icon: string | null;
+  category_color: string | null;
+  goal_type: 'percentage' | 'fixed' | null;
+  goal_value: string | null;
+  budget_amount: string;
+  rollover_amount: string;
+  effective_budget: string;
+  spent: string;
+  remaining: string;
+  completion_percentage: number;
+  is_over_budget: boolean;
+}
+
 export interface LeaderboardEntry {
   rank: number;
   user_id: string;
@@ -350,6 +373,24 @@ export interface Nudge {
   message: string;
   percentage?: number;
   created_at: string;
+}
+
+export interface DashboardNudge {
+  id: string;
+  type: 'warning' | 'celebration' | 'tip';
+  category_id?: string;
+  category_name?: string;
+  message: string;
+  percentage?: number;
+}
+
+export interface DashboardData {
+  active_pay_cycle: PayCycle | null;
+  stats: DashboardStats | null;
+  nudges: DashboardNudge[];
+  category_progress: DashboardCategoryProgress[];
+  friend_updates: FriendProgress[];
+  recent_cycles: PayCycle[];
 }
 
 // API Response wrapper

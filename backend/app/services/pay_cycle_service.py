@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from app.models.pay_cycle import PayCycle
 from app.models.pay_cycle_summary import PayCycleSummary
 from app.models.category_goal import CategoryGoal
+from app.models.category_rollover import CategoryRollover
 from app.models.starting_amount import StartingAmount
 from app.models.category import Category
 from app.models.transaction import Transaction
@@ -37,7 +38,7 @@ class PayCycleService:
         """Get the active pay cycle for a user."""
         result = await self.db.execute(
             select(PayCycle)
-            .options(selectinload(PayCycle.category_goals))
+            .options(selectinload(PayCycle.category_rollovers))
             .where(and_(PayCycle.user_id == user_id, PayCycle.status == "active"))
         )
         return result.scalar_one_or_none()
@@ -231,26 +232,51 @@ class PayCycleService:
         result = await self.db.execute(
             select(CategoryGoal)
             .options(selectinload(CategoryGoal.category))
-            .where(CategoryGoal.pay_cycle_id == pay_cycle.id)
+            .join(Category)
+            .where(Category.user_id == pay_cycle.user_id)
         )
         goals = list(result.scalars().all())
+        goals_by_category = {goal.category_id: goal for goal in goals}
+
+        rollover_result = await self.db.execute(
+            select(CategoryRollover).where(CategoryRollover.pay_cycle_id == pay_cycle.id)
+        )
+        rollover_by_category = {
+            rollover.category_id: rollover.rollover_balance
+            for rollover in rollover_result.scalars().all()
+        }
         
         category_breakdown = {}
         goal_completion = {}
         variances = {}
         total_rollover = Decimal("0.00")
         
-        for goal in goals:
-            category = goal.category
+        category_ids = set(goals_by_category.keys()) | set(rollover_by_category.keys())
+        categories_by_id = {goal.category_id: goal.category for goal in goals}
+        missing_category_ids = category_ids - set(categories_by_id.keys())
+        if missing_category_ids:
+            category_result = await self.db.execute(
+                select(Category).where(Category.id.in_(missing_category_ids))
+            )
+            categories_by_id.update({category.id: category for category in category_result.scalars().all()})
+
+        for category_id in category_ids:
+            goal = goals_by_category.get(category_id)
+            category = categories_by_id.get(category_id)
+            if not category:
+                continue
             category_transactions = [t for t in transactions if t.category_id == category.id]
             spent = sum(t.amount for t in category_transactions if t.type == "expense")
             
             # Calculate effective budget
-            if goal.goal_type == "percentage":
+            if goal and goal.goal_type == "percentage":
                 budget = (goal.goal_value / 100) * pay_cycle.income_amount
-            else:
+            elif goal:
                 budget = goal.goal_value
-            effective_budget = budget + goal.rollover_balance
+            else:
+                budget = Decimal("0.00")
+            rollover_balance = rollover_by_category.get(category_id, Decimal("0.00"))
+            effective_budget = budget + rollover_balance
             
             # Completion percentage
             if effective_budget > 0:
@@ -274,8 +300,8 @@ class PayCycleService:
             }
             
             goal_completion[category.id] = {
-                "goal_type": goal.goal_type,
-                "goal_value": float(goal.goal_value),
+                "goal_type": goal.goal_type if goal else "fixed",
+                "goal_value": float(goal.goal_value) if goal else 0.0,
                 "spent": float(spent),
                 "completion_percentage": round(completion_pct, 2),
                 "met": spent <= effective_budget,
@@ -301,29 +327,16 @@ class PayCycleService:
         )
 
     async def _seed_first_cycle_starting_amounts(self, user_id: str, pay_cycle_id: str) -> None:
-        """Seed first pay cycle with setup starting amounts as rollover balances."""
+        """Seed the first pay cycle with setup starting amounts as rollover balances."""
         result = await self.db.execute(
             select(StartingAmount).where(StartingAmount.user_id == user_id)
         )
         starting_amounts = list(result.scalars().all())
-        if not starting_amounts:
-            return
-
-        # Prevent duplicate inserts if goals already exist.
-        existing_result = await self.db.execute(
-            select(CategoryGoal.category_id).where(CategoryGoal.pay_cycle_id == pay_cycle_id)
-        )
-        existing_ids = {row.category_id for row in existing_result.all()}
-
         for item in starting_amounts:
-            if item.category_id in existing_ids:
-                continue
             self.db.add(
-                CategoryGoal(
+                CategoryRollover(
                     category_id=item.category_id,
                     pay_cycle_id=pay_cycle_id,
-                    goal_type="fixed",
-                    goal_value=Decimal("0.00"),
                     rollover_balance=item.amount,
                 )
             )

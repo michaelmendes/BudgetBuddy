@@ -8,9 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.category import Category
 from app.models.category_goal import CategoryGoal
-from app.models.pay_cycle import PayCycle
 from app.schemas.category import CategoryCreate, CategoryUpdate
-from app.core.exceptions import NotFoundException, ConflictException, BadRequestException
+from app.core.exceptions import NotFoundException, ConflictException
 
 
 class CategoryService:
@@ -69,11 +68,10 @@ class CategoryService:
         self.db.add(category)
         await self.db.flush()
 
-        if data.pay_cycle_id and data.allocation_type and data.allocation_value is not None:
+        if data.allocation_type and data.allocation_value is not None:
             await self._upsert_category_goal(
                 user_id=user_id,
                 category_id=category.id,
-                pay_cycle_id=data.pay_cycle_id,
                 goal_type=data.allocation_type,
                 goal_value=data.allocation_value,
             )
@@ -109,18 +107,16 @@ class CategoryService:
                 raise ConflictException(detail="Category with this name already exists")
         
         for field, value in update_data.items():
-            if field in {"pay_cycle_id", "allocation_type", "allocation_value"}:
+            if field in {"allocation_type", "allocation_value"}:
                 continue
             setattr(category, field, value)
 
-        pay_cycle_id = update_data.get("pay_cycle_id")
         allocation_type = update_data.get("allocation_type")
         allocation_value = update_data.get("allocation_value")
-        if pay_cycle_id and allocation_type and allocation_value is not None:
+        if allocation_type and allocation_value is not None:
             await self._upsert_category_goal(
                 user_id=user_id,
                 category_id=category.id,
-                pay_cycle_id=pay_cycle_id,
                 goal_type=allocation_type,
                 goal_value=allocation_value,
             )
@@ -181,26 +177,13 @@ class CategoryService:
         self,
         user_id: str,
         category_id: str,
-        pay_cycle_id: str,
         goal_type: str,
         goal_value: Decimal,
     ) -> None:
-        """Create or update a category goal allocation for a cycle."""
-        cycle_result = await self.db.execute(
-            select(PayCycle).where(and_(PayCycle.id == pay_cycle_id, PayCycle.user_id == user_id))
-        )
-        pay_cycle = cycle_result.scalar_one_or_none()
-        if not pay_cycle:
-            raise NotFoundException(detail="Pay cycle not found")
-        if pay_cycle.status == "closed":
-            raise BadRequestException(detail="Cannot update allocation for a closed pay cycle")
-
+        """Create or update the default goal allocation for a category."""
         goal_result = await self.db.execute(
             select(CategoryGoal).where(
-                and_(
-                    CategoryGoal.category_id == category_id,
-                    CategoryGoal.pay_cycle_id == pay_cycle_id,
-                )
+                CategoryGoal.category_id == category_id
             )
         )
         existing_goal = goal_result.scalar_one_or_none()
@@ -212,7 +195,6 @@ class CategoryService:
         self.db.add(
             CategoryGoal(
                 category_id=category_id,
-                pay_cycle_id=pay_cycle_id,
                 goal_type=goal_type,
                 goal_value=goal_value,
             )
