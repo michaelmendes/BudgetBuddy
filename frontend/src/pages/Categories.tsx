@@ -61,6 +61,10 @@ const categorySchema = z.object({
   icon: z.string().min(1, 'Please select an icon'),
   color: z.string().optional(),
   is_shared: z.boolean().default(false),
+  starting_amount: z
+    .string()
+    .min(1, 'Starting amount is required')
+    .refine((value) => isValidDecimal(value), 'Please enter a valid amount'),
   allocation_type: z.enum(['percentage', 'fixed']),
   allocation_value: z
     .string()
@@ -92,6 +96,7 @@ export default function CategoriesPage() {
       icon: '📁',
       color: 'category-other',
       is_shared: false,
+      starting_amount: '0.00',
       allocation_type: 'fixed',
       allocation_value: '',
     },
@@ -120,6 +125,7 @@ export default function CategoriesPage() {
         icon: category.icon || '📁',
         color: category.color || 'category-other',
         is_shared: category.is_shared,
+        starting_amount: '0.00',
         allocation_type: goal?.goal_type || 'fixed',
         allocation_value: goal?.goal_value || '',
       });
@@ -130,6 +136,7 @@ export default function CategoriesPage() {
         icon: '📁',
         color: 'category-other',
         is_shared: false,
+        starting_amount: '0.00',
         allocation_type: 'fixed',
         allocation_value: '',
       });
@@ -144,18 +151,25 @@ export default function CategoriesPage() {
         icon: values.icon,
         color: values.color,
         is_shared: values.is_shared,
-        allocation_type: values.allocation_type,
-        allocation_value: values.allocation_value,
       };
 
       if (editingCategory) {
         await updateCategory.mutateAsync({
           id: editingCategory.id,
-          data,
+          data: {
+            ...data,
+            allocation_type: values.allocation_type,
+            allocation_value: values.allocation_value,
+          },
         });
         toast({ title: 'Category updated' });
       } else {
-        await createCategory.mutateAsync(data);
+        await createCategory.mutateAsync({
+          ...data,
+          starting_amount: values.starting_amount,
+          allocation_type: values.allocation_type,
+          allocation_value: values.allocation_value,
+        });
         toast({ title: 'Category created' });
       }
 
@@ -270,12 +284,27 @@ export default function CategoriesPage() {
                         </SelectContent>
                       </Select>
                       <FormDescription>
-                        Choose whether this category uses a dollar cap or a percentage of your cycle income.
+                        Choose between a dollar cap or a percentage of your cycle income.
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+                {!editingCategory && (
+                  <FormField
+                    control={form.control}
+                    name="starting_amount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Starting Amount ($)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., 0.00" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
                 <FormField
                   control={form.control}
                   name="allocation_value"

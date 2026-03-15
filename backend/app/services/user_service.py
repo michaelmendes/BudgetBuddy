@@ -70,13 +70,30 @@ class UserService:
         user = await self.get_by_id(user_id)
         if not user:
             raise NotFoundException(detail="User not found")
-        
+
         update_data = user_data.model_dump(exclude_unset=True)
+        if "username" in update_data and update_data["username"] != user.username:
+            existing_username = await self.get_by_username(update_data["username"])
+            if existing_username and existing_username.id != user.id:
+                raise ConflictException(detail="Username already taken")
+
         for field, value in update_data.items():
             setattr(user, field, value)
-        
+
         await self.db.flush()
         return user
+
+    async def change_password(self, user_id: str, current_password: str, new_password: str) -> None:
+        """Change password for an authenticated user."""
+        user = await self.get_by_id(user_id)
+        if not user:
+            raise NotFoundException(detail="User not found")
+
+        if not verify_password(current_password, user.password_hash):
+            raise UnauthorizedException(detail="Current password is incorrect")
+
+        user.password_hash = get_password_hash(new_password)
+        await self.db.flush()
     
     async def authenticate(self, email: str, password: str) -> User:
         """Authenticate user with email and password."""

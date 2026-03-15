@@ -18,6 +18,7 @@ class CategoryBase(BaseModel):
 class CategoryCreate(CategoryBase):
     """Schema for creating a category."""
     sort_order: int = 0
+    starting_amount: Optional[Decimal] = Field(None, decimal_places=2)
     allocation_type: Optional[str] = Field(None, pattern="^(percentage|fixed)$")
     allocation_value: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
 

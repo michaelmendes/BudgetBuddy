@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 from app.models.pay_cycle import PayCycle
 from app.models.pay_cycle_summary import PayCycleSummary
 from app.models.category_goal import CategoryGoal
-from app.models.category_rollover import CategoryRollover
+from app.models.category_balance import CategoryBalance
 from app.models.starting_amount import StartingAmount
 from app.models.category import Category
 from app.models.transaction import Transaction
@@ -38,7 +38,7 @@ class PayCycleService:
         """Get the active pay cycle for a user."""
         result = await self.db.execute(
             select(PayCycle)
-            .options(selectinload(PayCycle.category_rollovers))
+            .options(selectinload(PayCycle.category_balances))
             .where(and_(PayCycle.user_id == user_id, PayCycle.status == "active"))
         )
         return result.scalar_one_or_none()
@@ -83,6 +83,33 @@ class PayCycleService:
             status = "upcoming"
         else:
             status = "active"
+
+        previous_cycle_result = await self.db.execute(
+            select(PayCycle.id)
+            .where(
+                and_(
+                    PayCycle.user_id == user_id,
+                    PayCycle.end_date < data.start_date,
+                )
+            )
+            .order_by(PayCycle.end_date.desc())
+            .limit(1)
+        )
+        previous_cycle_row = previous_cycle_result.first()
+        previous_cycle_id = previous_cycle_row.id if previous_cycle_row else None
+
+        next_cycle_result = await self.db.execute(
+            select(PayCycle)
+            .where(
+                and_(
+                    PayCycle.user_id == user_id,
+                    PayCycle.start_date > data.end_date,
+                )
+            )
+            .order_by(PayCycle.start_date.asc())
+            .limit(1)
+        )
+        next_cycle = next_cycle_result.scalar_one_or_none()
         
         pay_cycle = PayCycle(
             user_id=user_id,
@@ -90,12 +117,20 @@ class PayCycleService:
             end_date=data.end_date,
             income_amount=data.income_amount,
             status=status,
+            previous_cycle=previous_cycle_id,
         )
         self.db.add(pay_cycle)
         await self.db.flush()
 
-        if is_first_cycle:
-            await self._seed_first_cycle_starting_amounts(user_id, pay_cycle.id)
+        if next_cycle:
+            next_cycle.previous_cycle = pay_cycle.id
+
+        await self._initialize_cycle_balances(
+            user_id=user_id,
+            pay_cycle_id=pay_cycle.id,
+            previous_cycle_id=previous_cycle_id,
+            is_first_cycle=is_first_cycle,
+        )
 
         return pay_cycle
     
@@ -184,7 +219,7 @@ class PayCycleService:
         user_id: str,
         category_allocations: dict[str, Decimal],
     ) -> None:
-        """Validate that manual allocations match cycle remainder and category goals."""
+        """Validate that manual allocations match the close-screen allocation rule."""
         # Validate categories belong to the user.
         categories_result = await self.db.execute(
             select(Category.id).where(Category.user_id == user_id)
@@ -194,25 +229,10 @@ class PayCycleService:
         if invalid_ids:
             raise BadRequestException(detail="Allocations contain invalid categories")
 
-        # Calculate total expenses for this cycle.
-        tx_result = await self.db.execute(
-            select(Transaction).where(
-                and_(
-                    Transaction.pay_cycle_id == pay_cycle.id,
-                    Transaction.user_id == user_id,
-                    Transaction.type == "expense",
-                )
-            )
-        )
-        expenses = sum((tx.amount for tx in tx_result.scalars().all()), Decimal("0.00"))
-
-        remainder = pay_cycle.income_amount - expenses
-        if remainder < Decimal("0.00"):
-            raise BadRequestException(detail="Expenses exceed actual income; no remainder available to allocate")
-
+        # Close-page rule: actual paycheck - allocated total must equal 0.
         allocated_total = sum(category_allocations.values(), Decimal("0.00"))
-        if allocated_total != remainder:
-            raise BadRequestException(detail="Category allocations must exactly equal the remaining amount")
+        if allocated_total != pay_cycle.income_amount:
+            raise BadRequestException(detail="Category allocations must exactly equal the actual paycheck amount")
     
     async def _generate_summary(self, pay_cycle: PayCycle, goal_service: "GoalService") -> PayCycleSummary:
         """Generate summary statistics for a pay cycle."""
@@ -238,12 +258,12 @@ class PayCycleService:
         goals = list(result.scalars().all())
         goals_by_category = {goal.category_id: goal for goal in goals}
 
-        rollover_result = await self.db.execute(
-            select(CategoryRollover).where(CategoryRollover.pay_cycle_id == pay_cycle.id)
+        balance_result = await self.db.execute(
+            select(CategoryBalance).where(CategoryBalance.pay_cycle_id == pay_cycle.id)
         )
-        rollover_by_category = {
-            rollover.category_id: rollover.rollover_balance
-            for rollover in rollover_result.scalars().all()
+        starting_by_category = {
+            balance.category_id: balance.starting_balance
+            for balance in balance_result.scalars().all()
         }
         
         category_breakdown = {}
@@ -251,7 +271,7 @@ class PayCycleService:
         variances = {}
         total_rollover = Decimal("0.00")
         
-        category_ids = set(goals_by_category.keys()) | set(rollover_by_category.keys())
+        category_ids = set(goals_by_category.keys()) | set(starting_by_category.keys())
         categories_by_id = {goal.category_id: goal.category for goal in goals}
         missing_category_ids = category_ids - set(categories_by_id.keys())
         if missing_category_ids:
@@ -275,8 +295,8 @@ class PayCycleService:
                 budget = goal.goal_value
             else:
                 budget = Decimal("0.00")
-            rollover_balance = rollover_by_category.get(category_id, Decimal("0.00"))
-            effective_budget = budget + rollover_balance
+            starting_balance = starting_by_category.get(category_id, Decimal("0.00"))
+            effective_budget = budget + starting_balance
             
             # Completion percentage
             if effective_budget > 0:
@@ -326,18 +346,44 @@ class PayCycleService:
             rollover_generated=total_rollover,
         )
 
-    async def _seed_first_cycle_starting_amounts(self, user_id: str, pay_cycle_id: str) -> None:
-        """Seed the first pay cycle with setup starting amounts as rollover balances."""
-        result = await self.db.execute(
-            select(StartingAmount).where(StartingAmount.user_id == user_id)
+    async def _initialize_cycle_balances(
+        self,
+        user_id: str,
+        pay_cycle_id: str,
+        previous_cycle_id: Optional[str],
+        is_first_cycle: bool,
+    ) -> None:
+        """Create category balance rows for a new cycle."""
+        categories_result = await self.db.execute(
+            select(Category.id).where(Category.user_id == user_id)
         )
-        starting_amounts = list(result.scalars().all())
-        for item in starting_amounts:
+        category_ids = [row.id for row in categories_result.all()]
+
+        starting_by_category: dict[str, Decimal] = {category_id: Decimal("0.00") for category_id in category_ids}
+
+        if previous_cycle_id:
+            previous_result = await self.db.execute(
+                select(CategoryBalance).where(CategoryBalance.pay_cycle_id == previous_cycle_id)
+            )
+            for balance in previous_result.scalars().all():
+                starting_by_category[balance.category_id] = balance.closing_balance
+        elif is_first_cycle:
+            starting_amounts_result = await self.db.execute(
+                select(StartingAmount).where(StartingAmount.user_id == user_id)
+            )
+            for item in starting_amounts_result.scalars().all():
+                starting_by_category[item.category_id] = item.amount
+
+        for category_id in category_ids:
+            starting_balance = starting_by_category.get(category_id, Decimal("0.00"))
             self.db.add(
-                CategoryRollover(
-                    category_id=item.category_id,
+                CategoryBalance(
+                    category_id=category_id,
                     pay_cycle_id=pay_cycle_id,
-                    rollover_balance=item.amount,
+                    starting_balance=starting_balance,
+                    spent=Decimal("0.00"),
+                    paycheck_allocated=Decimal("0.00"),
+                    closing_balance=starting_balance,
                 )
             )
         await self.db.flush()
@@ -348,6 +394,37 @@ class PayCycleService:
         if not pay_cycle:
             raise NotFoundException(detail="Pay cycle not found")
         return pay_cycle.summary
+
+    async def list_category_balances(self, pay_cycle_id: str, user_id: str) -> list[dict]:
+        """Get category balances for a pay cycle."""
+        pay_cycle = await self.get_by_id(pay_cycle_id, user_id)
+        if not pay_cycle:
+            raise NotFoundException(detail="Pay cycle not found")
+
+        result = await self.db.execute(
+            select(CategoryBalance, Category)
+            .join(Category, Category.id == CategoryBalance.category_id)
+            .where(
+                and_(
+                    CategoryBalance.pay_cycle_id == pay_cycle_id,
+                    Category.user_id == user_id,
+                )
+            )
+            .order_by(Category.sort_order.asc(), Category.name.asc())
+        )
+
+        return [
+            {
+                "category_id": balance.category_id,
+                "category_name": category.name,
+                "category_icon": category.icon,
+                "starting_balance": balance.starting_balance,
+                "spent": balance.spent,
+                "paycheck_allocated": balance.paycheck_allocated,
+                "closing_balance": balance.closing_balance,
+            }
+            for balance, category in result.all()
+        ]
     
     async def delete(self, pay_cycle_id: str, user_id: str) -> None:
         """Delete a pay cycle."""

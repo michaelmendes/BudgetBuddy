@@ -3,7 +3,7 @@ Transaction Pydantic schemas.
 """
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, Field
 
 
@@ -19,6 +19,21 @@ class TransactionCreate(TransactionBase):
     """Schema for creating a transaction."""
     category_id: str
     pay_cycle_id: str
+
+
+class TransactionBatchItem(BaseModel):
+    """Schema for a single transaction item in a batch request."""
+    amount: Decimal = Field(..., gt=0, decimal_places=2)
+    description: Optional[str] = Field(None, max_length=500)
+    transaction_date: date
+
+
+class TransactionBatchCreate(BaseModel):
+    """Schema for batch transaction creation."""
+    pay_cycle_id: str
+    category_id: str
+    type: str = Field("expense", pattern="^(expense|income)$")
+    transactions: List[TransactionBatchItem] = Field(..., min_length=1)
 
 
 class TransactionUpdate(BaseModel):

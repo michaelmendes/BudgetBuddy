@@ -6,6 +6,7 @@ import type {
   PayCycleUpdate,
   PayCycleCloseRequest,
   PayCycleSummary,
+  PayCycleCategoryBalance,
   Category,
   CategoryCreate,
   CategoryUpdate,
@@ -14,6 +15,7 @@ import type {
   CategoryGoalUpdate,
   Transaction,
   TransactionCreate,
+  TransactionBatchCreate,
   TransactionUpdate,
   RecurringTransaction,
   RecurringTransactionCreate,
@@ -67,6 +69,14 @@ export function usePayCycleSummary(id: string | undefined) {
   });
 }
 
+export function usePayCycleCategoryBalances(id: string | undefined) {
+  return useQuery<PayCycleCategoryBalance[]>({
+    queryKey: ['payCycleCategoryBalances', id],
+    queryFn: () => api.getPayCycleCategoryBalances(id!),
+    enabled: !!id,
+  });
+}
+
 export function useCreatePayCycle() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -104,6 +114,7 @@ export function useClosePayCycle() {
       queryClient.invalidateQueries({ queryKey: ['payCycle', id] });
       queryClient.invalidateQueries({ queryKey: ['payCycle', 'active'] });
       queryClient.invalidateQueries({ queryKey: ['payCycleSummary', id] });
+      queryClient.invalidateQueries({ queryKey: ['payCycleCategoryBalances', id] });
       queryClient.invalidateQueries({ queryKey: ['categoryGoals'] });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['transactionTotals'] });
@@ -124,10 +135,17 @@ export function useCreateCategory() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CategoryCreate) => api.createCategory(data),
-    onSuccess: () => {
+    onSuccess: (createdCategory) => {
+      queryClient.setQueryData<Category[] | undefined>(['categories'], (current) => {
+        if (!current) return [createdCategory];
+        if (current.some((category) => category.id === createdCategory.id)) return current;
+        return [...current, createdCategory];
+      });
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['categoryGoals'] });
+      queryClient.invalidateQueries({ queryKey: ['startingAmounts'] });
+      queryClient.invalidateQueries({ queryKey: ['payCycleCategoryBalances'] });
     },
   });
 }
@@ -216,6 +234,21 @@ export function useCreateTransaction() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: TransactionCreate) => api.createTransaction(data),
+    onSuccess: (_, data) => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['payCycleOverview'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions', data.pay_cycle_id] });
+      queryClient.invalidateQueries({ queryKey: ['categoryTotals', data.pay_cycle_id] });
+      queryClient.invalidateQueries({ queryKey: ['transactionTotals', data.pay_cycle_id] });
+      queryClient.invalidateQueries({ queryKey: ['nudges'] });
+    },
+  });
+}
+
+export function useCreateTransactionsBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: TransactionBatchCreate) => api.createTransactionsBatch(data),
     onSuccess: (_, data) => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['payCycleOverview'] });

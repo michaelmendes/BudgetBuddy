@@ -14,19 +14,27 @@ import {
   Menu,
   X,
   Wallet,
-  Sparkles,
+  Settings,
+  FileDown,
+  HardDrive,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Pay Cycles', href: '/cycles', icon: CalendarDays },
   { name: 'Transactions', href: '/transactions', icon: Receipt },
   { name: 'Categories', href: '/categories', icon: FolderOpen },
   { name: 'Recurring', href: '/recurring', icon: Repeat },
   { name: 'Goals', href: '/goals', icon: Target },
   { name: 'Social', href: '/social', icon: Users },
-  { name: 'Pay Cycles', href: '/cycles', icon: CalendarDays },
 ];
 
 function NavItems({ onItemClick }: { onItemClick?: () => void }) {
@@ -81,19 +89,37 @@ export default function AppLayout() {
           </div>
 
           <div className="border-t border-sidebar-border p-4">
-            <div className="mb-3 flex items-center gap-3 rounded-lg bg-sidebar-accent/50 px-3 py-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground">
-                {user?.display_name?.charAt(0).toUpperCase() || 'U'}
-              </div>
-              <div className="flex-1 overflow-hidden">
-                <p className="truncate text-sm font-medium text-sidebar-foreground">
-                  {user?.display_name || 'User'}
-                </p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {user?.email}
-                </p>
-              </div>
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="mb-3 flex w-full items-center gap-3 rounded-lg bg-sidebar-accent/50 px-3 py-2 text-left transition-colors hover:bg-sidebar-accent">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground">
+                    {user?.display_name?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                  <div className="flex-1 overflow-hidden">
+                    <p className="truncate text-sm font-medium text-sidebar-foreground">
+                      {user?.display_name || 'User'}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {user?.email}
+                    </p>
+                  </div>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-52" align="end" side="top">
+                <DropdownMenuItem onClick={() => navigate('/account')}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  Manage Account
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/export-data')}>
+                  <FileDown className="mr-2 h-4 w-4" />
+                  Export Data
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/backup-data')}>
+                  <HardDrive className="mr-2 h-4 w-4" />
+                  Backup Data Locally
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               variant="ghost"
               size="sm"

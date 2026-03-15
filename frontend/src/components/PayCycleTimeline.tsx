@@ -1,6 +1,6 @@
-import { format, differenceInDays, isAfter, isBefore, isToday, parseISO } from 'date-fns';
+import { format, differenceInDays, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { formatCurrency, parseDecimal, calculatePercentage } from '@/lib/decimal';
+import { formatCurrency } from '@/lib/decimal';
 import type { PayCycle } from '@/types/api';
 
 interface PayCycleTimelineProps {
@@ -23,7 +23,7 @@ export function PayCycleTimeline({ cycles, activeCycleId, onCycleClick }: PayCyc
         <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-border" />
 
         <div className="space-y-4">
-          {sortedCycles.map((cycle, index) => {
+          {sortedCycles.map((cycle) => {
             const isActive = cycle.id === activeCycleId;
             const startDate = parseISO(cycle.start_date);
             const endDate = parseISO(cycle.end_date);
@@ -83,11 +83,6 @@ export function PayCycleTimeline({ cycles, activeCycleId, onCycleClick }: PayCyc
                   </div>
                   <div className="flex items-center gap-4 text-sm text-muted-foreground">
                     <span>Income: {formatCurrency(cycle.income_amount)}</span>
-                    {parseDecimal(cycle.rollover_amount) > 0 && (
-                      <span className="text-success">
-                        +{formatCurrency(cycle.rollover_amount)} rollover
-                      </span>
-                    )}
                   </div>
                   {cycle.status === 'active' && (
                     <div className="mt-2">

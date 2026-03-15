@@ -28,6 +28,9 @@ import PayCycleClosePage from "@/pages/PayCycleClose";
 import SetupCategoriesPage from "@/pages/SetupCategories";
 import SetupGoalAmountsPage from "@/pages/SetupGoalAmounts";
 import StartingAmountsPage from "@/pages/StartingAmounts";
+import ManageAccountPage from "@/pages/ManageAccount";
+import DataExportPage from "@/pages/DataExport";
+import BackupDataLocalPage from "@/pages/BackupDataLocal";
 
 import NotFound from "./pages/NotFound";
 import ResetPasswordPage from "./pages/ResetPassword";
@@ -77,6 +80,9 @@ const App = () => (
               <Route path="/setup/categories" element={<SetupCategoriesPage />} />
               <Route path="/setup/goal-amounts" element={<SetupGoalAmountsPage />} />
               <Route path="/setup/starting-amounts" element={<StartingAmountsPage />} />
+              <Route path="/account" element={<ManageAccountPage />} />
+              <Route path="/export-data" element={<DataExportPage />} />
+              <Route path="/backup-data" element={<BackupDataLocalPage />} />
             </Route>
 
             {/* Redirects */}

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.category import Category
 from app.models.category_goal import CategoryGoal
-from app.models.category_rollover import CategoryRollover
+from app.models.category_balance import CategoryBalance
 from app.models.transaction import Transaction
 from app.schemas.dashboard import (
     DashboardCategoryProgress,
@@ -71,16 +71,16 @@ class DashboardService:
         rollovers_by_category: dict[str, Decimal] = {}
         if category_ids:
             rollovers_result = await self.db.execute(
-                select(CategoryRollover).where(
+                select(CategoryBalance).where(
                     and_(
-                        CategoryRollover.pay_cycle_id == active_cycle.id,
-                        CategoryRollover.category_id.in_(category_ids),
+                        CategoryBalance.pay_cycle_id == active_cycle.id,
+                        CategoryBalance.category_id.in_(category_ids),
                     )
                 )
             )
             rollovers_by_category = {
-                rollover.category_id: rollover.rollover_balance
-                for rollover in rollovers_result.scalars().all()
+                balance.category_id: balance.starting_balance
+                for balance in rollovers_result.scalars().all()
             }
 
         transactions_result = await self.db.execute(
@@ -105,7 +105,8 @@ class DashboardService:
             elif transaction.type == "income":
                 extra_income += transaction.amount
 
-        total_budget = active_cycle.income_amount + active_cycle.rollover_amount
+        total_rollover = sum(rollovers_by_category.values(), Decimal("0.00"))
+        total_budget = active_cycle.income_amount + total_rollover
         remaining = total_budget - total_spent + extra_income
         budget_used_percentage = self._percentage(total_spent, total_budget)
 

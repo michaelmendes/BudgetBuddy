@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from app.models.user import User
     from app.models.transaction import Transaction
     from app.models.category_goal import CategoryGoal
-    from app.models.category_rollover import CategoryRollover
+    from app.models.category_balance import CategoryBalance
     from app.models.recurring_transaction import RecurringTransaction
     from app.models.starting_amount import StartingAmount
 
@@ -54,8 +54,8 @@ class Category(Base):
     goals: Mapped[List["CategoryGoal"]] = relationship(
         "CategoryGoal", back_populates="category", cascade="all, delete-orphan"
     )
-    rollovers: Mapped[List["CategoryRollover"]] = relationship(
-        "CategoryRollover", back_populates="category", cascade="all, delete-orphan"
+    balances: Mapped[List["CategoryBalance"]] = relationship(
+        "CategoryBalance", back_populates="category", cascade="all, delete-orphan"
     )
     recurring_transactions: Mapped[List["RecurringTransaction"]] = relationship(
         "RecurringTransaction", back_populates="category", cascade="all, delete-orphan"

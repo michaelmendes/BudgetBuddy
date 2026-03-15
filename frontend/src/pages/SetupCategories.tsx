@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
+import { isValidDecimal } from '@/lib/decimal';
 import { useCategories, useCreateCategory, useDeleteCategory } from '@/hooks/useApi';
 
 const DEFAULT_ICONS = ['🍕', '🚗', '🎬', '💡', '🛒', '💊', '💰', '📁', '🏠', '✈️', '👕', '🎁', '📱', '🎮', '📚', '🏋️'];
@@ -19,18 +20,21 @@ export default function SetupCategoriesPage() {
 
   const [name, setName] = useState('');
   const [icon, setIcon] = useState(DEFAULT_ICONS[0]);
+  const [startingAmount, setStartingAmount] = useState('0.00');
 
   const handleAdd = async () => {
-    if (!name.trim()) return;
+    if (!name.trim() || !isValidDecimal(startingAmount)) return;
     try {
       await createCategory.mutateAsync({
         name: name.trim(),
         icon,
         color: 'category-other',
         is_shared: false,
+        starting_amount: startingAmount,
       });
       setName('');
       setIcon(DEFAULT_ICONS[0]);
+      setStartingAmount('0.00');
     } catch (error) {
       toast({
         title: 'Error',
@@ -60,13 +64,18 @@ export default function SetupCategoriesPage() {
           <CardDescription>Step 1 of 3. Add the spending and saving categories you want to track.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+          <div className="grid gap-3 sm:grid-cols-[1fr_180px_auto]">
             <Input
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="Category name (e.g., Groceries)"
             />
-            <Button onClick={handleAdd} disabled={createCategory.isPending || !name.trim()}>
+            <Input
+              value={startingAmount}
+              onChange={(event) => setStartingAmount(event.target.value)}
+              placeholder="Starting amount"
+            />
+            <Button onClick={handleAdd} disabled={createCategory.isPending || !name.trim() || !isValidDecimal(startingAmount)}>
               <Plus className="mr-2 h-4 w-4" />
               Add Category
             </Button>

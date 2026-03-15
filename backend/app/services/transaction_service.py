@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 from app.models.transaction import Transaction
 from app.models.pay_cycle import PayCycle
 from app.models.category import Category
-from app.schemas.transaction import TransactionCreate, TransactionUpdate
+from app.schemas.transaction import TransactionCreate, TransactionUpdate, TransactionBatchCreate
 from app.core.exceptions import NotFoundException, BadRequestException
 
 
@@ -62,33 +62,13 @@ class TransactionService:
     
     async def create(self, user_id: str, data: TransactionCreate) -> Transaction:
         """Create a new transaction."""
-        # Validate pay cycle exists and belongs to user
-        result = await self.db.execute(
-            select(PayCycle).where(
-                and_(PayCycle.id == data.pay_cycle_id, PayCycle.user_id == user_id)
-            )
+        pay_cycle = await self._get_valid_pay_cycle(data.pay_cycle_id, user_id)
+        await self._ensure_category_exists(data.category_id, user_id)
+        self._validate_transaction_date_in_cycle(
+            pay_cycle.start_date,
+            pay_cycle.end_date,
+            data.transaction_date,
         )
-        pay_cycle = result.scalar_one_or_none()
-        if not pay_cycle:
-            raise NotFoundException(detail="Pay cycle not found")
-        
-        if pay_cycle.status == "closed":
-            raise BadRequestException(detail="Cannot add transaction to closed pay cycle")
-        
-        # Validate category exists and belongs to user
-        result = await self.db.execute(
-            select(Category).where(
-                and_(Category.id == data.category_id, Category.user_id == user_id)
-            )
-        )
-        if not result.scalar_one_or_none():
-            raise NotFoundException(detail="Category not found")
-        
-        # Validate date is within pay cycle
-        if not (pay_cycle.start_date <= data.transaction_date <= pay_cycle.end_date):
-            raise BadRequestException(
-                detail="Transaction date must be within pay cycle dates"
-            )
         
         transaction = Transaction(
             user_id=user_id,
@@ -102,6 +82,33 @@ class TransactionService:
         self.db.add(transaction)
         await self.db.flush()
         return transaction
+
+    async def create_batch(self, user_id: str, data: TransactionBatchCreate) -> List[Transaction]:
+        """Create multiple transactions in a single request."""
+        pay_cycle = await self._get_valid_pay_cycle(data.pay_cycle_id, user_id)
+        await self._ensure_category_exists(data.category_id, user_id)
+
+        transactions: List[Transaction] = []
+        for item in data.transactions:
+            self._validate_transaction_date_in_cycle(
+                pay_cycle.start_date,
+                pay_cycle.end_date,
+                item.transaction_date,
+            )
+            transaction = Transaction(
+                user_id=user_id,
+                pay_cycle_id=data.pay_cycle_id,
+                category_id=data.category_id,
+                amount=item.amount,
+                description=item.description,
+                transaction_date=item.transaction_date,
+                type=data.type,
+            )
+            transactions.append(transaction)
+
+        self.db.add_all(transactions)
+        await self.db.flush()
+        return transactions
     
     async def update(
         self, 
@@ -214,3 +221,39 @@ class TransactionService:
             "income": totals.get("income", Decimal("0.00")),
             "expense": totals.get("expense", Decimal("0.00")),
         }
+
+    async def _get_valid_pay_cycle(self, pay_cycle_id: str, user_id: str) -> PayCycle:
+        """Get pay cycle and validate it can accept transactions."""
+        result = await self.db.execute(
+            select(PayCycle).where(
+                and_(PayCycle.id == pay_cycle_id, PayCycle.user_id == user_id)
+            )
+        )
+        pay_cycle = result.scalar_one_or_none()
+        if not pay_cycle:
+            raise NotFoundException(detail="Pay cycle not found")
+        if pay_cycle.status == "closed":
+            raise BadRequestException(detail="Cannot add transaction to closed pay cycle")
+        return pay_cycle
+
+    async def _ensure_category_exists(self, category_id: str, user_id: str) -> None:
+        """Ensure category exists and belongs to user."""
+        result = await self.db.execute(
+            select(Category).where(
+                and_(Category.id == category_id, Category.user_id == user_id)
+            )
+        )
+        if not result.scalar_one_or_none():
+            raise NotFoundException(detail="Category not found")
+
+    def _validate_transaction_date_in_cycle(
+        self,
+        cycle_start: date,
+        cycle_end: date,
+        transaction_date: date,
+    ) -> None:
+        """Validate transaction date is inside cycle window."""
+        if not (cycle_start <= transaction_date <= cycle_end):
+            raise BadRequestException(
+                detail="Transaction date must be within pay cycle dates"
+            )

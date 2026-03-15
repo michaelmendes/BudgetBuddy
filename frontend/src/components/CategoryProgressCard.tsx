@@ -13,11 +13,16 @@ export function CategoryProgressCard({
   className,
 }: CategoryProgressCardProps) {
   const spent = parseDecimal(progress.spent);
-  const totalBudget = parseDecimal(progress.effective_budget);
-  const remaining = Math.max(parseDecimal(progress.remaining), 0);
   const rollover = parseDecimal(progress.rollover_amount);
-  const percentage = progress.completion_percentage;
-  const isOverBudget = progress.is_over_budget;
+  const totalFromPreviousCycle = rollover;
+  const remaining = totalFromPreviousCycle - spent;
+  const isOverBudget = spent > totalFromPreviousCycle;
+  const percentage =
+    totalFromPreviousCycle > 0
+      ? (spent / totalFromPreviousCycle) * 100
+      : spent > 0
+      ? 100
+      : 0;
 
   // Get icon and color from category
   const iconEmoji = progress.category_icon || '📁';
@@ -38,7 +43,7 @@ export function CategoryProgressCard({
           <div className="min-w-0">
             <h4 className="font-medium text-foreground truncate">{progress.category_name}</h4>
             <p className="text-sm text-muted-foreground">
-              {formatCurrency(spent)} / {formatCurrency(totalBudget)}
+              {formatCurrency(spent)} / {formatCurrency(totalFromPreviousCycle)}
             </p>
           </div>
         </div>
@@ -67,14 +72,9 @@ export function CategoryProgressCard({
         <span className="text-muted-foreground">
           {isOverBudget ? 'Over by' : 'Remaining'}: {' '}
           <span className={cn('font-medium', isOverBudget ? 'text-destructive' : 'text-foreground')}>
-            {formatCurrency(isOverBudget ? Math.abs(parseDecimal(progress.remaining)) : remaining)}
+            {formatCurrency(isOverBudget ? Math.abs(remaining) : remaining)}
           </span>
         </span>
-        {rollover > 0 && (
-          <span className="text-success">
-            +{formatCurrency(rollover)} rollover
-          </span>
-        )}
       </div>
     </div>
   );

@@ -36,7 +36,7 @@ class PayCycleResponse(PayCycleBase):
     id: str
     user_id: str
     status: str
-    rollover_amount: Decimal
+    previous_cycle: Optional[str] = None
     created_at: datetime
     closed_at: Optional[datetime]
     
@@ -62,6 +62,17 @@ class PayCycleSummaryResponse(BaseModel):
         from_attributes = True
 
 
+class PayCycleCategoryBalanceResponse(BaseModel):
+    """Category balance snapshot for a specific pay cycle."""
+    category_id: str
+    category_name: str
+    category_icon: Optional[str] = None
+    starting_balance: Decimal
+    spent: Decimal
+    paycheck_allocated: Decimal
+    closing_balance: Decimal
+
+
 class PayCycleWithSummary(PayCycleResponse):
     """Pay cycle with optional summary included."""
     summary: Optional[PayCycleSummaryResponse] = None
@@ -70,7 +81,7 @@ class PayCycleWithSummary(PayCycleResponse):
 class PayCycleCloseAllocation(BaseModel):
     """Manual rollover allocation for a category when closing a cycle."""
     category_id: str
-    amount: Decimal = Field(..., ge=0, decimal_places=2)
+    amount: Decimal = Field(..., decimal_places=2)
 
 
 class PayCycleCloseRequest(BaseModel):

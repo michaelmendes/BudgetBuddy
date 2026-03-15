@@ -4,7 +4,7 @@ User endpoints.
 from fastapi import APIRouter
 
 from app.api.v1.deps import DbSession, CurrentUser
-from app.schemas.user import UserResponse, UserUpdate
+from app.schemas.user import UserResponse, UserUpdate, UserPasswordChange
 from app.schemas.starting_amount import StartingAmountSaveRequest, StartingAmountItem
 from app.services.user_service import UserService
 
@@ -37,6 +37,21 @@ async def delete_current_user(
     """Delete the current user's account."""
     service = UserService(db)
     await service.delete(current_user.id)
+
+
+@router.patch("/me/password", status_code=204)
+async def change_current_user_password(
+    payload: UserPasswordChange,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    """Change the current user's password."""
+    service = UserService(db)
+    await service.change_password(
+        current_user.id,
+        payload.current_password,
+        payload.new_password,
+    )
 
 
 @router.get("/me/starting-amounts", response_model=list[StartingAmountItem])

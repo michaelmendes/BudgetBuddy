@@ -105,6 +105,13 @@ class ApiClient {
     });
   }
 
+  async changePassword(data: { current_password: string; new_password: string }) {
+    return this.request<void>('/users/me/password', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
   async getStartingAmounts() {
     return this.request<import('@/types/api').StartingAmountItem[]>('/users/me/starting-amounts');
   }
@@ -175,6 +182,10 @@ class ApiClient {
     return this.request<import('@/types/api').PayCycleSummary>(`/pay-cycles/${id}/summary`);
   }
 
+  async getPayCycleCategoryBalances(id: string) {
+    return this.request<import('@/types/api').PayCycleCategoryBalance[]>(`/pay-cycles/${id}/category-balances`);
+  }
+
   // Category endpoints
   async getCategories() {
     return this.request<import('@/types/api').Category[]>('/categories');
@@ -234,6 +245,13 @@ class ApiClient {
 
   async createTransaction(data: import('@/types/api').TransactionCreate) {
     return this.request<import('@/types/api').Transaction>('/transactions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async createTransactionsBatch(data: import('@/types/api').TransactionBatchCreate) {
+    return this.request<import('@/types/api').Transaction[]>('/transactions/batch', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -362,6 +380,18 @@ class ApiClient {
 
   async getNudges() {
     return this.request<import('@/types/api').Nudge[]>('/users/me/nudges');
+  }
+
+  // Backup endpoints
+  async getDefaultLocalBackupDestination() {
+    return this.request<import('@/types/api').LocalBackupDefaultResponse>('/backup/default-destination');
+  }
+
+  async backupDataLocally(data: import('@/types/api').LocalBackupRequest) {
+    return this.request<import('@/types/api').LocalBackupResponse>('/backup/local', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   }
 }
 

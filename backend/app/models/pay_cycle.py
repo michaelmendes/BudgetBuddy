@@ -13,7 +13,7 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.models.user import User
     from app.models.transaction import Transaction
-    from app.models.category_rollover import CategoryRollover
+    from app.models.category_balance import CategoryBalance
     from app.models.pay_cycle_summary import PayCycleSummary
 
 
@@ -38,8 +38,10 @@ class PayCycle(Base):
     # Status: active, closed, upcoming
     status: Mapped[str] = mapped_column(String(20), default="upcoming", index=True)
     
-    # Rollover from previous cycle
-    rollover_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))
+    # Previous cycle in user's timeline.
+    previous_cycle: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("pay_cycles.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -52,8 +54,8 @@ class PayCycle(Base):
     transactions: Mapped[List["Transaction"]] = relationship(
         "Transaction", back_populates="pay_cycle", cascade="all, delete-orphan"
     )
-    category_rollovers: Mapped[List["CategoryRollover"]] = relationship(
-        "CategoryRollover", back_populates="pay_cycle", cascade="all, delete-orphan"
+    category_balances: Mapped[List["CategoryBalance"]] = relationship(
+        "CategoryBalance", back_populates="pay_cycle", cascade="all, delete-orphan"
     )
     summary: Mapped[Optional["PayCycleSummary"]] = relationship(
         "PayCycleSummary", back_populates="pay_cycle", uselist=False, cascade="all, delete-orphan"

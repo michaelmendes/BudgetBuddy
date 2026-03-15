@@ -11,6 +11,7 @@ from app.schemas.pay_cycle import (
     PayCycleResponse, 
     PayCycleWithSummary,
     PayCycleSummaryResponse,
+    PayCycleCategoryBalanceResponse,
     PayCycleCloseRequest,
 )
 from app.services.pay_cycle_service import PayCycleService
@@ -134,6 +135,17 @@ async def get_pay_cycle_summary(
     """Get the summary for a pay cycle (only available after closing)."""
     service = PayCycleService(db)
     return await service.get_summary(pay_cycle_id, current_user.id)
+
+
+@router.get("/{pay_cycle_id}/category-balances", response_model=List[PayCycleCategoryBalanceResponse])
+async def get_pay_cycle_category_balances(
+    pay_cycle_id: str,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    """Get category balances for a pay cycle."""
+    service = PayCycleService(db)
+    return await service.list_category_balances(pay_cycle_id, current_user.id)
 
 
 @router.get("/{pay_cycle_id}/potential-rollover")

@@ -80,3 +80,20 @@ class UserPasswordReset(BaseModel):
     username: str = Field(..., min_length=2, max_length=50)
     email: str = Field(..., pattern=r'^\S+@\S+\.\S+$')
     new_password: str = Field(..., min_length=8)
+
+
+class UserPasswordChange(BaseModel):
+    """Schema for authenticated password change."""
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8, max_length=100)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        if not any(c.isupper() for c in v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        return v

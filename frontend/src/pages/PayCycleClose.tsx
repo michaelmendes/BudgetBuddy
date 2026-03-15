@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { format, parseISO } from 'date-fns';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ChevronDown } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency, isValidDecimal, parseDecimal } from '@/lib/decimal';
 import {
@@ -36,6 +37,7 @@ export default function PayCycleClosePage() {
   const [actualIncome, setActualIncome] = useState('');
   const [allocations, setAllocations] = useState<Record<string, string>>({});
   const [allocationsInitialized, setAllocationsInitialized] = useState(false);
+  const [showCycleTotalsDetails, setShowCycleTotalsDetails] = useState(false);
 
   useEffect(() => {
     if (cycle && actualIncome === '') {
@@ -80,14 +82,14 @@ export default function PayCycleClosePage() {
 
   const expenseTotal = totals?.expense ?? 0;
   const actualIncomeValue = isValidDecimal(actualIncome) ? parseDecimal(actualIncome) : 0;
-  const remainder = actualIncomeValue - expenseTotal;
 
   const categoryRows = useMemo(() => {
     if (!categories) return [];
     const goalsByCategoryId = new Map((goals ?? []).map((goal) => [goal.category_id, goal]));
 
-    const spentByCategoryId = (transactions ?? []).reduce<Record<string, number>>((acc, tx) => {
-      const signedAmount = tx.type === 'expense' ? parseDecimal(tx.amount) : -parseDecimal(tx.amount);
+    const netSpentByCategoryId = (transactions ?? []).reduce<Record<string, number>>((acc, tx) => {
+      const amount = parseDecimal(tx.amount);
+      const signedAmount = tx.type === 'expense' ? amount : -amount;
       acc[tx.category_id] = (acc[tx.category_id] ?? 0) + signedAmount;
       return acc;
     }, {});
@@ -96,33 +98,41 @@ export default function PayCycleClosePage() {
       const goal = goalsByCategoryId.get(category.id);
       // "Start" is only what carried over from the previous cycle.
       const opening = goal ? parseDecimal(goal.rollover_balance) : 0;
-      const spent = spentByCategoryId[category.id] ?? 0;
+      const netSpent = netSpentByCategoryId[category.id] ?? 0;
       const carryForward = isValidDecimal(allocations[category.id] ?? '') ? parseDecimal(allocations[category.id]) : 0;
-      // Current = start - spent + carry forward allocation.
-      const current = opening - spent + carryForward;
+      // Current = start - net spent + carry forward allocation.
+      const current = opening - netSpent + carryForward;
       return {
         categoryId: category.id,
         name: category.name,
         icon: category.icon ?? '📁',
         opening,
-        spent,
+        netSpent,
         current,
       };
     });
   }, [categories, goals, transactions, allocations]);
 
+  const totalStartingAmounts = useMemo(
+    () => categoryRows.reduce((sum, row) => sum + row.opening, 0),
+    [categoryRows]
+  );
+  const startingBalance = actualIncomeValue + totalStartingAmounts;
+  const remainder = startingBalance - expenseTotal;
+
   const allocatedTotal = useMemo(
     () => Object.values(allocations).reduce((sum, value) => sum + (isValidDecimal(value) ? parseDecimal(value) : 0), 0),
     [allocations]
   );
+  const paycheckRemainder = actualIncomeValue - allocatedTotal;
   const unallocatedRemainder = remainder - allocatedTotal;
+  const displayedUnallocatedRemainder = paycheckRemainder;
 
   const canClose =
     !!cycle &&
     cycle.status !== 'closed' &&
     isValidDecimal(actualIncome) &&
-    remainder >= 0 &&
-    toCents(unallocatedRemainder) === 0 &&
+    toCents(displayedUnallocatedRemainder) === 0 &&
     !closePayCycle.isPending;
 
   const handleCloseCycle = async () => {
@@ -136,19 +146,10 @@ export default function PayCycleClosePage() {
       return;
     }
 
-    if (remainder < 0) {
-      toast({
-        title: 'Cannot close cycle',
-        description: 'Expenses exceed the actual paycheck amount.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (toCents(unallocatedRemainder) !== 0) {
+    if (toCents(displayedUnallocatedRemainder) !== 0) {
       toast({
         title: 'Remainder not fully allocated',
-        description: 'Allocate the full remainder across categories before closing.',
+        description: 'Actual paycheck minus allocated amount must equal $0.00 before closing.',
         variant: 'destructive',
       });
       return;
@@ -216,23 +217,55 @@ export default function PayCycleClosePage() {
           <CardTitle>Cycle Totals</CardTitle>
           <CardDescription>Set actual paycheck and review this cycle before closing.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">Expected Income</p>
-            <p className="text-lg font-semibold">{formatCurrency(cycle.income_amount)}</p>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">Expected Income</p>
+              <p className="text-lg font-semibold">{formatCurrency(cycle.income_amount)}</p>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">Actual Paycheck</p>
+              <Input
+                className="w-full max-w-40"
+                value={actualIncome}
+                onChange={(event) => setActualIncome(event.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">Allocated Amount</p>
+              <p className="text-lg font-semibold">{formatCurrency(allocatedTotal)}</p>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">Paycheck Remainder</p>
+              <p className="text-lg font-semibold">{formatCurrency(paycheckRemainder)}</p>
+            </div>
           </div>
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">Actual Paycheck</p>
-            <Input value={actualIncome} onChange={(event) => setActualIncome(event.target.value)} placeholder="0.00" />
-          </div>
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">Total Expenses</p>
-            <p className="text-lg font-semibold">{formatCurrency(expenseTotal)}</p>
-          </div>
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">Remaining</p>
-            <p className="text-lg font-semibold">{formatCurrency(remainder)}</p>
-          </div>
+
+          <Collapsible open={showCycleTotalsDetails} onOpenChange={setShowCycleTotalsDetails}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" className="w-full justify-between px-0 text-sm text-muted-foreground">
+                Net Worth Summary
+                <ChevronDown className={`h-4 w-4 transition-transform ${showCycleTotalsDetails ? 'rotate-180' : ''}`} />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Starting Balance</p>
+                  <p className="text-lg font-semibold">{formatCurrency(startingBalance)}</p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Total Expenses</p>
+                  <p className="text-lg font-semibold">{formatCurrency(expenseTotal)}</p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Remaining</p>
+                  <p className="text-lg font-semibold">{formatCurrency(remainder)}</p>
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
         </CardContent>
       </Card>
 
@@ -251,28 +284,34 @@ export default function PayCycleClosePage() {
               {categoryRows.map((row) => (
                 <div key={row.categoryId} className="rounded-lg border p-3">
                   <div className="mb-3 flex items-center justify-between gap-3">
-                    <p className="font-medium text-foreground">
+                    <p className="font-medium text-lg text-foreground">
                       <span className="mr-2">{row.icon}</span>
                       {row.name}
                     </p>
-                    <div className="text-right text-xs text-muted-foreground">
+                    <div className="text-right text-sm text-muted-foreground">
                       <p>Start: {formatCurrency(row.opening)}</p>
-                      <p>Spent: {formatCurrency(row.spent)}</p>
-                      <p>Current: {formatCurrency(row.current)}</p>
+                      <p>Net Spent: {formatCurrency(row.netSpent)}</p>
+                      <p className="font-semibold">Current: {formatCurrency(row.current)}</p>
                     </div>
                   </div>
                   <div>
-                    <p className="mb-1 text-xs text-muted-foreground">Carry forward allocation</p>
-                    <Input
-                      value={allocations[row.categoryId] ?? '0.00'}
-                      onChange={(event) =>
-                        setAllocations((prev) => ({
-                          ...prev,
-                          [row.categoryId]: event.target.value,
-                        }))
-                      }
-                      placeholder="0.00"
-                    />
+                    <p className="mb-1 text-sm text-muted-foreground">Carry forward allocation</p>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                        $
+                      </span>
+                      <Input
+                        className="pl-7"
+                        value={allocations[row.categoryId] ?? '0.00'}
+                        onChange={(event) =>
+                          setAllocations((prev) => ({
+                            ...prev,
+                            [row.categoryId]: event.target.value,
+                          }))
+                        }
+                        placeholder="0.00"
+                      />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -285,8 +324,16 @@ export default function PayCycleClosePage() {
             </p>
             <p>
               Unallocated remainder:{' '}
-              <span className={`font-semibold ${toCents(unallocatedRemainder) === 0 ? 'text-success' : 'text-warning'}`}>
-                {formatCurrency(unallocatedRemainder)}
+              <span
+                className={`font-semibold ${
+                  toCents(displayedUnallocatedRemainder) > 0
+                    ? 'text-success'
+                    : toCents(displayedUnallocatedRemainder) < 0
+                    ? 'text-destructive'
+                    : 'text-foreground'
+                }`}
+              >
+                {formatCurrency(displayedUnallocatedRemainder)}
               </span>
             </p>
           </div>

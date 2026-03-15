@@ -8,6 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.category import Category
 from app.models.category_goal import CategoryGoal
+from app.models.starting_amount import StartingAmount
+from app.models.pay_cycle import PayCycle
+from app.models.category_balance import CategoryBalance
 from app.schemas.category import CategoryCreate, CategoryUpdate
 from app.core.exceptions import NotFoundException, ConflictException
 
@@ -67,6 +70,14 @@ class CategoryService:
         )
         self.db.add(category)
         await self.db.flush()
+
+        starting_amount = data.starting_amount if data.starting_amount is not None else Decimal("0.00")
+        await self._upsert_starting_amount(user_id=user_id, category_id=category.id, amount=starting_amount)
+        await self._sync_active_cycle_balance(
+            user_id=user_id,
+            category_id=category.id,
+            starting_amount=starting_amount,
+        )
 
         if data.allocation_type and data.allocation_value is not None:
             await self._upsert_category_goal(
@@ -199,3 +210,70 @@ class CategoryService:
                 goal_value=goal_value,
             )
         )
+
+    async def _upsert_starting_amount(self, user_id: str, category_id: str, amount: Decimal) -> None:
+        """Create or update starting amount for a category."""
+        result = await self.db.execute(
+            select(StartingAmount).where(
+                and_(
+                    StartingAmount.user_id == user_id,
+                    StartingAmount.category_id == category_id,
+                )
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            existing.amount = amount
+            return
+
+        self.db.add(
+            StartingAmount(
+                user_id=user_id,
+                category_id=category_id,
+                amount=amount,
+            )
+        )
+
+    async def _sync_active_cycle_balance(
+        self,
+        user_id: str,
+        category_id: str,
+        starting_amount: Decimal,
+    ) -> None:
+        """Create/update active-cycle balance row with selected starting amount."""
+        active_cycle_result = await self.db.execute(
+            select(PayCycle).where(
+                and_(
+                    PayCycle.user_id == user_id,
+                    PayCycle.status == "active",
+                )
+            )
+        )
+        active_cycle = active_cycle_result.scalar_one_or_none()
+        if not active_cycle:
+            return
+
+        balance_result = await self.db.execute(
+            select(CategoryBalance).where(
+                and_(
+                    CategoryBalance.pay_cycle_id == active_cycle.id,
+                    CategoryBalance.category_id == category_id,
+                )
+            )
+        )
+        cycle_balance = balance_result.scalar_one_or_none()
+        if not cycle_balance:
+            self.db.add(
+                CategoryBalance(
+                    pay_cycle_id=active_cycle.id,
+                    category_id=category_id,
+                    starting_balance=starting_amount,
+                    spent=Decimal("0.00"),
+                    paycheck_allocated=Decimal("0.00"),
+                    closing_balance=starting_amount,
+                )
+            )
+            return
+
+        cycle_balance.starting_balance = starting_amount
+        cycle_balance.closing_balance = starting_amount - cycle_balance.spent + cycle_balance.paycheck_allocated

@@ -7,7 +7,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.category_goal import CategoryGoal
-from app.models.category_rollover import CategoryRollover
+from app.models.category_balance import CategoryBalance
 from app.models.long_term_goal import LongTermGoal
 from app.models.pay_cycle import PayCycle
 from app.models.category import Category
@@ -74,11 +74,11 @@ class GoalService:
             raise NotFoundException(detail="Pay cycle not found")
 
         rollover_result = await self.db.execute(
-            select(CategoryRollover).where(CategoryRollover.pay_cycle_id == pay_cycle_id)
+            select(CategoryBalance).where(CategoryBalance.pay_cycle_id == pay_cycle_id)
         )
         rollover_by_category = {
-            rollover.category_id: rollover.rollover_balance
-            for rollover in rollover_result.scalars().all()
+            balance.category_id: balance.starting_balance
+            for balance in rollover_result.scalars().all()
         }
 
         transaction_result = await self.db.execute(

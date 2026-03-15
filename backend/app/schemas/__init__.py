@@ -11,3 +11,4 @@ from app.schemas.long_term_goal import *
 from app.schemas.friendship import *
 from app.schemas.social import *
 from app.schemas.starting_amount import *
+from app.schemas.backup import *

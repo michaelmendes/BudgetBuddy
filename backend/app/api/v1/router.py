@@ -14,6 +14,7 @@ from app.api.v1 import (
     goals,
     friends,
     social,
+    backup,
 )
 
 api_router = APIRouter()
@@ -28,3 +29,4 @@ api_router.include_router(recurring.router, prefix="/recurring", tags=["Recurrin
 api_router.include_router(goals.router, prefix="/goals", tags=["Goals"])
 api_router.include_router(friends.router, prefix="/friends", tags=["Friendships"])
 api_router.include_router(social.router, prefix="/social", tags=["Social"])
+api_router.include_router(backup.router, prefix="/backup", tags=["Backup"])

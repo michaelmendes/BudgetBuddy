@@ -5,7 +5,12 @@ from typing import List, Optional
 from fastapi import APIRouter, Query
 
 from app.api.v1.deps import DbSession, CurrentUser
-from app.schemas.transaction import TransactionCreate, TransactionUpdate, TransactionResponse
+from app.schemas.transaction import (
+    TransactionCreate,
+    TransactionUpdate,
+    TransactionBatchCreate,
+    TransactionResponse,
+)
 from app.services.transaction_service import TransactionService
 
 router = APIRouter()
@@ -38,6 +43,17 @@ async def create_transaction(
     """Create a new transaction."""
     service = TransactionService(db)
     return await service.create(current_user.id, data)
+
+
+@router.post("/batch", response_model=List[TransactionResponse], status_code=201)
+async def create_transactions_batch(
+    data: TransactionBatchCreate,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    """Create multiple transactions for one category in a single request."""
+    service = TransactionService(db)
+    return await service.create_batch(current_user.id, data)
 
 
 @router.get("/{transaction_id}", response_model=TransactionResponse)

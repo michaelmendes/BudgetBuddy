@@ -7,9 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useCategories, usePayCycle, useTransactions } from '@/hooks/useApi';
+import { useCategories, usePayCycle, usePayCycleCategoryBalances, usePayCycleSummary, useTransactions } from '@/hooks/useApi';
 import { cn } from '@/lib/utils';
-import { formatCurrency } from '@/lib/decimal';
+import { formatCurrency, parseDecimal } from '@/lib/decimal';
 
 export default function PayCycleReviewPage() {
   const { id } = useParams<{ id: string }>();
@@ -18,6 +18,8 @@ export default function PayCycleReviewPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
   const { data: cycle, isLoading: cycleLoading } = usePayCycle(id);
+  const { data: summary, isLoading: summaryLoading } = usePayCycleSummary(id);
+  const { data: categoryBalances, isLoading: balancesLoading } = usePayCycleCategoryBalances(id);
   const { data: categories } = useCategories();
   const { data: transactions, isLoading: txLoading } = useTransactions(
     id,
@@ -30,7 +32,7 @@ export default function PayCycleReviewPage() {
   const filteredTransactions = useMemo(
     () =>
       (transactions ?? []).filter((transaction) => {
-        const category = getCategory(transaction.category_id);
+        const category = categories?.find((item) => item.id === transaction.category_id);
         const searchTerm = search.toLowerCase();
         return (
           !searchTerm ||
@@ -40,6 +42,26 @@ export default function PayCycleReviewPage() {
       }),
     [transactions, search, categories]
   );
+
+  const actualPaycheckAmount = parseDecimal(cycle?.income_amount);
+  const amountSpent = parseDecimal(summary?.total_expenses);
+  const amountSaved = parseDecimal(summary?.total_savings);
+
+  const categorySummaryRows = useMemo(() => {
+    if (!cycle || cycle.status !== 'closed') return [];
+
+    return (categoryBalances ?? [])
+      .map((item) => ({
+        categoryId: item.category_id,
+        name: item.category_name,
+        icon: item.category_icon ?? '📁',
+        starting: parseDecimal(item.starting_balance),
+        spent: parseDecimal(item.spent),
+        allocated: parseDecimal(item.paycheck_allocated),
+        total: parseDecimal(item.closing_balance),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [cycle, categoryBalances]);
 
   if (cycleLoading) {
     return (
@@ -77,6 +99,66 @@ export default function PayCycleReviewPage() {
           </Link>
         </Button>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Cycle Summary</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border bg-muted/30 p-3">
+              <p className="text-sm text-muted-foreground">Actual Paycheck</p>
+              <p className="text-lg font-semibold text-foreground">{formatCurrency(actualPaycheckAmount)}</p>
+            </div>
+            <div className="rounded-lg border bg-muted/30 p-3">
+              <p className="text-sm text-muted-foreground">Amount Saved</p>
+              <p className="text-lg font-semibold text-success">{formatCurrency(amountSaved)}</p>
+            </div>
+            <div className="rounded-lg border bg-muted/30 p-3">
+              <p className="text-sm text-muted-foreground">Amount Spent</p>
+              <p className="text-lg font-semibold text-foreground">{formatCurrency(amountSpent)}</p>
+            </div>
+          </div>
+
+          {summaryLoading || balancesLoading ? (
+            <Skeleton className="h-36 w-full" />
+          ) : cycle.status !== 'closed' ? (
+            <p className="text-sm text-muted-foreground">
+              Category summary appears after the cycle is closed.
+            </p>
+          ) : categorySummaryRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No category summary available for this cycle.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full min-w-[640px] text-sm">
+                <thead className="bg-muted/40">
+                  <tr className="text-left text-muted-foreground">
+                    <th className="px-3 py-2 font-medium">Category</th>
+                    <th className="px-3 py-2 font-medium">Starting Balance</th>
+                    <th className="px-3 py-2 font-medium">Amount Spent</th>
+                    <th className="px-3 py-2 font-medium">Amount Allocated</th>
+                    <th className="px-3 py-2 font-medium">Closing Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {categorySummaryRows.map((row) => (
+                    <tr key={row.categoryId} className="border-t">
+                      <td className="px-3 py-2 font-medium text-foreground">
+                        <span className="mr-2">{row.icon}</span>
+                        {row.name}
+                      </td>
+                      <td className="px-3 py-2 text-foreground">{formatCurrency(row.starting)}</td>
+                      <td className="px-3 py-2 text-foreground">{formatCurrency(row.spent)}</td>
+                      <td className="px-3 py-2 text-foreground">{formatCurrency(row.allocated)}</td>
+                      <td className="px-3 py-2 font-semibold text-foreground">{formatCurrency(row.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

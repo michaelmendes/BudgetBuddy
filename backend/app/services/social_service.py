@@ -13,7 +13,7 @@ from app.models.friendship import Friendship
 from app.models.pay_cycle import PayCycle
 from app.models.category import Category
 from app.models.category_goal import CategoryGoal
-from app.models.category_rollover import CategoryRollover
+from app.models.category_balance import CategoryBalance
 from app.models.transaction import Transaction
 from app.schemas.social import FriendProgress, SharedCategoryProgress, LeaderboardEntry
 from app.core.exceptions import ForbiddenException, NotFoundException
@@ -93,16 +93,16 @@ class SocialService:
         goals = {g.category_id: g for g in result.scalars().all()}
 
         rollover_result = await self.db.execute(
-            select(CategoryRollover).where(
+            select(CategoryBalance).where(
                 and_(
-                    CategoryRollover.pay_cycle_id == pay_cycle.id,
-                    CategoryRollover.category_id.in_(shared_category_ids),
+                    CategoryBalance.pay_cycle_id == pay_cycle.id,
+                    CategoryBalance.category_id.in_(shared_category_ids),
                 )
             )
         )
         rollovers = {
-            rollover.category_id: rollover.rollover_balance
-            for rollover in rollover_result.scalars().all()
+            balance.category_id: balance.starting_balance
+            for balance in rollover_result.scalars().all()
         }
         
         # Get spending for shared categories

@@ -42,6 +42,22 @@ export interface Token {
   access_token: string;
 }
 
+export interface LocalBackupDefaultResponse {
+  default_directory: string;
+}
+
+export interface LocalBackupRequest {
+  destination_directory: string;
+  file_name?: string;
+}
+
+export interface LocalBackupResponse {
+  source_path: string;
+  destination_path: string;
+  bytes_copied: number;
+  created_at: string;
+}
+
 // PayCycle types
 export interface PayCycle {
   id: string;
@@ -50,7 +66,7 @@ export interface PayCycle {
   end_date: string;
   income_amount: string;
   status: 'upcoming' | 'active' | 'closed';
-  rollover_amount: string;
+  previous_cycle: string | null;
   created_at: string;
   closed_at: string | null;
   summary?: PayCycleSummary | null;
@@ -92,6 +108,16 @@ export interface PayCycleSummary {
   generated_at: string;
 }
 
+export interface PayCycleCategoryBalance {
+  category_id: string;
+  category_name: string;
+  category_icon: string | null;
+  starting_balance: string;
+  spent: string;
+  paycheck_allocated: string;
+  closing_balance: string;
+}
+
 export interface CategoryBreakdown {
   name: string;
   spent: string;
@@ -131,6 +157,7 @@ export interface CategoryCreate {
   icon?: string;
   color?: string;
   is_shared?: boolean;
+  starting_amount?: string;
   allocation_type?: 'percentage' | 'fixed';
   allocation_value?: string;
 }
@@ -192,6 +219,19 @@ export interface TransactionCreate {
   description?: string;
   transaction_date: string;
   type: 'expense' | 'income';
+}
+
+export interface TransactionBatchItem {
+  amount: string;
+  description?: string;
+  transaction_date: string;
+}
+
+export interface TransactionBatchCreate {
+  pay_cycle_id: string;
+  category_id: string;
+  type: 'expense' | 'income';
+  transactions: TransactionBatchItem[];
 }
 
 export interface TransactionUpdate {
